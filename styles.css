@@ -1,0 +1,613 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #2a2a2a;
+    color: #ffffff;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+/* Controls Panel Styles */
+.controls-panel {
+    width: 250px;
+    background-color: #1e1e1e;
+    padding: 20px;
+    border-right: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    max-height: 100vh;
+}
+
+.mode-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.mode-btn {
+    padding: 10px;
+    border: 2px solid #666;
+    background-color: transparent;
+    color: #ffffff;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 12px;
+    border-radius: 8px;
+}
+
+.mode-btn.active {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+.background-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.background-toggle {
+    display: flex;
+    flex-direction: column;
+}
+
+.background-btn {
+    padding: 8px;
+    border: 2px solid #666;
+    background-color: transparent;
+    color: #ffffff;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 11px;
+    border-radius: 8px;
+}
+
+.background-btn.active {
+    background-color: #4CAF50;
+    color: #ffffff;
+    border-color: #4CAF50;
+}
+
+.background-btn:hover {
+    background-color: #333;
+}
+
+/* Background Image Section */
+.background-image-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Background Color Section */
+.background-color-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.color-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+.color-input-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hex-input {
+    flex: 1;
+    padding: 10px 8px;
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #666;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: bold;
+    font-family: monospace;
+    text-transform: uppercase;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+.hex-input:focus {
+    border-color: #888;
+    background-color: #333;
+}
+
+.color-preview {
+    width: 32px;
+    height: 32px;
+    border: 2px solid #666;
+    border-radius: 8px;
+    background-color: #ffffff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.color-preview:hover {
+    border-color: #888;
+}
+
+/* Reverse Mask Section */
+.reverse-mask-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.mode-btn:not(.active) {
+    background-color: #000000;
+}
+
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.format-label {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.upload-btn {
+    padding: 10px;
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #666;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 12px;
+    text-align: left;
+    position: relative;
+    border-radius: 8px;
+}
+
+.upload-btn::after {
+    content: '▼';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.slider-label {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider {
+    flex: 1;
+    height: 20px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #444;
+    outline: none;
+    border-radius: 10px;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+}
+
+.slider-value {
+    font-weight: bold;
+    min-width: 30px;
+    text-align: right;
+    font-size: 14px;
+}
+
+/* CSS Cache Buster - Version 2.0 - Force reload */
+/* Compact Download Buttons in Sidebar - Updated */
+.compact-download-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px; /* Reduced from 10px to 6px */
+    margin-top: auto;
+    border: 1px solid #444; /* Debug border to see if styles are applied */
+    padding: 10px; /* Reduced from 15px to 10px */
+    border-radius: 8px;
+}
+
+.section-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 4px; /* Reduced from 8px to 4px */
+    margin-top: 8px; /* Reduced from 15px to 8px */
+}
+
+.section-label:first-child {
+    margin-top: 0;
+}
+
+.compact-buttons-row {
+    display: flex;
+    gap: 5px;
+    margin-top: 2px; /* Reduced from 5px to 2px */
+}
+
+/* Force button styles with high specificity */
+.compact-download-section .compact-btn,
+button.compact-btn,
+#svgDownloadBtn,
+#pngDownloadBtn,
+#videoDownloadBtn,
+#startStopMotionBtn {
+    flex: 1;
+    padding: 10px 8px !important;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border: 2px solid #666 !important;
+    cursor: pointer !important;
+    font-weight: bold !important;
+    font-size: 11px !important;
+    text-align: center !important;
+    border-radius: 8px !important;
+    transition: all 0.3s ease !important;
+    text-transform: uppercase !important;
+}
+
+.compact-download-section .compact-btn:hover,
+button.compact-btn:hover,
+#svgDownloadBtn:hover,
+#pngDownloadBtn:hover,
+#videoDownloadBtn:hover,
+#startStopMotionBtn:hover {
+    background-color: #333 !important;
+    border-color: #888 !important;
+}
+
+.compact-btn.animation-btn {
+    font-size: 11px;
+    background-color: #000000 !important;
+    border: 2px solid #666;
+    padding: 10px;
+    width: 100%;
+    margin-bottom: 5px;
+}
+
+.compact-btn.animation-btn:hover {
+    background-color: #333;
+}
+
+/* Force select styles with high specificity */
+.compact-download-section .compact-select,
+select.compact-select,
+#videoFormatSelect {
+    flex: 1 !important;
+    padding: 10px 8px !important;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border: 2px solid #666 !important;
+    border-radius: 8px !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    text-transform: uppercase !important;
+}
+
+.compact-download-section .compact-select:hover,
+select.compact-select:hover,
+#videoFormatSelect:hover {
+    background-color: #333 !important;
+    border-color: #888 !important;
+}
+
+.compact-download-section .compact-select option,
+select.compact-select option,
+#videoFormatSelect option {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    text-transform: uppercase !important;
+}
+
+.download-btn {
+    padding: 15px;
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #666;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 12px;
+    text-align: left;
+    position: relative;
+    border-radius: 8px;
+}
+
+.download-btn::after {
+    content: '↓';
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.download-btn:hover {
+    background-color: #333;
+}
+
+.download-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Video Download Group */
+.video-download-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.format-select {
+    padding: 8px;
+    background-color: #000000;
+    color: #ffffff;
+    border: 2px solid #666;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.format-select:hover {
+    background-color: #333;
+}
+
+.format-select option {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+/* Main Content Styles */
+.main-content {
+    flex: 1;
+    background-color: #2a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.drop-zone {
+    width: 95%;
+    height: 95%;
+    border: 2px dashed #666;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.drop-zone.dragover {
+    border-color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.drop-content {
+    text-align: center;
+}
+
+.drop-content h1 {
+    font-size: 2.5em;
+    font-weight: normal;
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.drop-zone.has-image {
+    border: none;
+}
+
+.drop-zone.has-image .drop-content h1 {
+    display: none;
+}
+
+/* Original input image - small in corner */
+.drop-zone.has-image #canvas {
+    display: block !important;
+    max-width: 180px;
+    max-height: 140px;
+    object-fit: contain;
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    border: 2px solid #666;
+    border-radius: 8px;
+    z-index: 10;
+}
+
+/* Processed/pixelated image - fill frame while maintaining proportions */
+.drop-zone.has-image #pixelCanvas {
+    display: block !important;
+    width: auto;
+    height: auto;
+    max-width: calc(100% - 220px); /* Leave space for corner image + padding */
+    max-height: calc(100% - 40px);  /* Leave space for top/bottom padding */
+    object-fit: contain;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid #888888 !important;
+    border-radius: 0 !important;
+    z-index: 5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+    
+    .controls-panel {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .main-content {
+        height: 70vh;
+    }
+}
+
+/* Color Wheel Popup Styles */
+.color-wheel-popup {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    pointer-events: none; /* Allow clicks through the positioning container */
+}
+
+.color-wheel-container {
+    background-color: #333;
+    border: 2px solid #666;
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    width: 250px;
+    pointer-events: all; /* Re-enable clicks for the actual content */
+}
+
+.color-wheel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.color-wheel-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+#colorWheelCanvas {
+    border: 2px solid #666;
+    border-radius: 50%;
+    cursor: crosshair;
+    background-color: #222;
+}
+
+.brightness-slider-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #ffffff;
+    font-size: 12px;
+}
+
+.brightness-slider {
+    width: 100%;
+    height: 8px;
+    background: linear-gradient(to right, #000000, #ffffff);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+}
+
+.brightness-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: #ffffff;
+    border: 2px solid #333;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.brightness-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: #ffffff;
+    border: 2px solid #333;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* Make color preview clickable with cursor pointer */
+.color-preview {
+    cursor: pointer;
+}
+
+.color-preview:hover {
+    border-color: #888 !important;
+}
