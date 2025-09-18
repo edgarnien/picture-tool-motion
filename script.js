@@ -21,6 +21,20 @@ class ImagePixelationTool {
         this.animationSpeed = 1.0; // Animation speed multiplier (0.5x to 3x)
         this.motion2VisibleBars = []; // For motion 2 flickering
         this.motion3ImpulsePhase = 0; // For motion 3 impulse waves
+        this.aspectRatio = 'original'; // Current aspect ratio setting
+        
+        // Default settings for reset functionality
+        this.defaultSettings = {
+            pixelSize: 80,
+            threshold: 0,
+            stretch: 3,
+            sensitivity: 30,
+            opacity: 30,
+            motionType: 'BUILD_UP',
+            speed: 1.0,
+            aspectRatio: 'original',
+            primaryColor: '#ffffff'
+        };
         
         // Video recording state
         this.isRecording = false;
@@ -82,6 +96,7 @@ class ImagePixelationTool {
         document.getElementById('sensitivitySlider').addEventListener('input', (e) => {
             document.getElementById('sensitivityValue').textContent = e.target.value;
             this.processImage();
+            this.saveCurrentSettings(); // Save settings after change
         });
 
         // Opacity slider
@@ -90,37 +105,55 @@ class ImagePixelationTool {
             if (this.backgroundImageEnabled) {
                 this.processImage();
             }
+            this.saveCurrentSettings(); // Save settings after change
         });
 
         // Sliders with immediate live updates
         document.getElementById('sizeSlider').addEventListener('input', (e) => {
             document.getElementById('sizeValue').textContent = e.target.value;
             this.processImage(); // Immediate processing for live updates
+            this.saveCurrentSettings(); // Save settings after change
         });
 
         document.getElementById('thresholdSlider').addEventListener('input', (e) => {
             document.getElementById('thresholdValue').textContent = e.target.value;
             this.processImage(); // Immediate processing for live updates
+            this.saveCurrentSettings(); // Save settings after change
         });
 
         document.getElementById('stretchSlider').addEventListener('input', (e) => {
             const value = e.target.value.padStart(2, '0');
             document.getElementById('stretchValue').textContent = value;
             this.processImage(); // Immediate processing for live updates
+            this.saveCurrentSettings(); // Save settings after change
         });
 
         // Download buttons
         document.getElementById('svgDownloadBtn').addEventListener('click', () => this.downloadSVG());
         document.getElementById('pngDownloadBtn').addEventListener('click', () => this.downloadPNG());
+        
+        // Reset Settings button
+        document.getElementById('resetSettingsBtn').addEventListener('click', () => this.resetSettings());
+        
         // Start/Stop Animation button
         document.getElementById('startStopMotionBtn').addEventListener('click', () => this.toggleMotionAnimation());
         // Motion type selector
-        document.getElementById('motionTypeSelect').addEventListener('change', (e) => this.setMotionType(e.target.value));
+        document.getElementById('motionTypeSelect').addEventListener('change', (e) => {
+            this.setMotionType(e.target.value);
+            this.saveCurrentSettings(); // Save settings after change
+        });
+        
+        // Aspect ratio selector
+        document.getElementById('aspectRatioSelect').addEventListener('change', (e) => {
+            this.setAspectRatio(e.target.value);
+            this.saveCurrentSettings(); // Save settings after change
+        });
         
         // Speed slider for animation
         document.getElementById('speedSlider').addEventListener('input', (e) => {
             this.animationSpeed = parseFloat(e.target.value);
             document.querySelector('#speedSlider + .compact-slider-value').textContent = `${this.animationSpeed.toFixed(1)}x`;
+            this.saveCurrentSettings(); // Save settings after change
         });
         
         // Download Video button
@@ -128,8 +161,14 @@ class ImagePixelationTool {
         
         // Background color controls
         document.getElementById('backgroundColorBtn').addEventListener('click', () => this.toggleBackgroundColor());
-        document.getElementById('hexColorInput').addEventListener('input', (e) => this.updateBackgroundColor(e.target.value));
-        document.getElementById('hexColorInput').addEventListener('change', (e) => this.updateBackgroundColor(e.target.value));
+        document.getElementById('hexColorInput').addEventListener('input', (e) => {
+            this.updateBackgroundColor(e.target.value);
+            this.saveCurrentSettings(); // Save settings after change
+        });
+        document.getElementById('hexColorInput').addEventListener('change', (e) => {
+            this.updateBackgroundColor(e.target.value);
+            this.saveCurrentSettings(); // Save settings after change
+        });
         
         // Color wheel controls
         document.getElementById('colorPreview').addEventListener('click', () => this.toggleColorWheel());
@@ -169,6 +208,16 @@ class ImagePixelationTool {
         if (this.motionAnimationRunning) {
             this.stopMotionAnimation();
             this.startMotionAnimation();
+        }
+    }
+
+    setAspectRatio(aspectRatio) {
+        this.aspectRatio = aspectRatio;
+        
+        if (this.originalImage) {
+            // Reconfigure canvas with new aspect ratio
+            this.setupCanvas(this.originalImage);
+            this.processImage();
         }
     }
 
@@ -334,7 +383,7 @@ class ImagePixelationTool {
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx, this.canvas.width, this.canvas.height);
             this.pixelCtx.globalAlpha = 1.0; // Reset opacity for bars
         }
         
@@ -377,7 +426,7 @@ class ImagePixelationTool {
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx);
             this.pixelCtx.globalAlpha = 1.0;
         }
         
@@ -430,7 +479,7 @@ class ImagePixelationTool {
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx);
             this.pixelCtx.globalAlpha = 1.0;
         }
         
@@ -496,7 +545,7 @@ class ImagePixelationTool {
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx);
             this.pixelCtx.globalAlpha = 1.0;
         }
         
@@ -562,7 +611,7 @@ class ImagePixelationTool {
             this.pixelCtx.beginPath();
             this.pixelCtx.rect(bar.x, bar.y, bar.width, bar.height);
             this.pixelCtx.clip();
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx, this.canvas.width, this.canvas.height);
             this.pixelCtx.restore();
         } else {
             // Normal mode: draw colored bar
@@ -643,81 +692,52 @@ class ImagePixelationTool {
             
             // Get user's preferred format
             const formatSelect = document.getElementById('videoFormatSelect');
-            const preferredFormat = formatSelect ? formatSelect.value : 'auto';
+            const preferredFormat = formatSelect ? formatSelect.value : 'mp4'; // Default to MP4
             
-            // Try different formats based on user preference
+            // Set format based on user selection
             let options;
             
             if (preferredFormat === 'mp4') {
-                // User specifically wants MP4
+                // User wants MP4
                 if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
                     options = {
                         mimeType: 'video/mp4;codecs=h264',
-                        videoBitsPerSecond: 5000000
+                        videoBitsPerSecond: 10000000 // 10Mbps for high quality
                     };
                 } else if (MediaRecorder.isTypeSupported('video/mp4')) {
                     options = {
                         mimeType: 'video/mp4',
-                        videoBitsPerSecond: 5000000
+                        videoBitsPerSecond: 10000000
                     };
                 } else {
-                    throw new Error('MP4 format is not supported by your browser. Please select a different format.');
+                    throw new Error('MP4 format is not supported by your browser. Please select WebM instead.');
                 }
             } else if (preferredFormat === 'webm') {
-                // User specifically wants WebM
+                // User wants WebM
                 if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
                     options = {
                         mimeType: 'video/webm;codecs=vp9',
-                        videoBitsPerSecond: 5000000
+                        videoBitsPerSecond: 8000000 // 8Mbps for high quality
                     };
                 } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
                     options = {
                         mimeType: 'video/webm;codecs=vp8',
-                        videoBitsPerSecond: 3000000
+                        videoBitsPerSecond: 6000000 // 6Mbps for good quality
                     };
                 } else if (MediaRecorder.isTypeSupported('video/webm')) {
                     options = {
                         mimeType: 'video/webm',
-                        videoBitsPerSecond: 2500000
+                        videoBitsPerSecond: 5000000 // 5Mbps for decent quality
                     };
                 } else {
-                    throw new Error('WebM format is not supported by your browser. Please select a different format.');
+                    throw new Error('WebM format is not supported by your browser. Please select MP4 instead.');
                 }
             } else {
-                // Auto mode - try best available format
-                if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
-                    options = {
-                        mimeType: 'video/mp4;codecs=h264',
-                        videoBitsPerSecond: 10000000 // Increased to 10Mbps for highest quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                    options = {
-                        mimeType: 'video/mp4',
-                        videoBitsPerSecond: 10000000 // Increased to 10Mbps for highest quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264')) {
-                    options = {
-                        mimeType: 'video/webm;codecs=h264',
-                        videoBitsPerSecond: 8000000 // Increased to 8Mbps for high quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-                    options = {
-                        mimeType: 'video/webm;codecs=vp9',
-                        videoBitsPerSecond: 8000000 // Increased to 8Mbps for high quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-                    options = {
-                        mimeType: 'video/webm;codecs=vp8',
-                        videoBitsPerSecond: 6000000 // Increased to 6Mbps for better quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm')) {
-                    options = {
-                        mimeType: 'video/webm',
-                        videoBitsPerSecond: 5000000 // Increased to 5Mbps for better quality
-                    };
-                } else {
-                    throw new Error('Neither MP4 nor WebM format is supported by your browser');
-                }
+                // Fallback to MP4 if somehow an invalid format is selected
+                options = {
+                    mimeType: 'video/mp4',
+                    videoBitsPerSecond: 10000000
+                };
             }
 
             console.log('Using codec:', options.mimeType);
@@ -920,6 +940,96 @@ class ImagePixelationTool {
         return validTypes.includes(file.type);
     }
 
+    saveCurrentSettings() {
+        const currentSettings = {
+            pixelSize: parseInt(document.getElementById('sizeSlider').value),
+            threshold: parseInt(document.getElementById('thresholdSlider').value),
+            stretch: parseInt(document.getElementById('stretchSlider').value),
+            sensitivity: parseInt(document.getElementById('sensitivitySlider').value),
+            opacity: parseInt(document.getElementById('opacitySlider').value),
+            motionType: document.getElementById('motionTypeSelect').value,
+            speed: parseInt(document.getElementById('speedSlider').value),
+            aspectRatio: document.getElementById('aspectRatioSelect').value,
+            primaryColor: document.getElementById('hexColorInput').value
+        };
+        
+        localStorage.setItem('pixelToolSettings', JSON.stringify(currentSettings));
+    }
+
+    loadSavedSettings() {
+        const savedSettings = localStorage.getItem('pixelToolSettings');
+        if (savedSettings) {
+            try {
+                const settings = JSON.parse(savedSettings);
+                
+                // Update UI elements with saved values
+                document.getElementById('sizeSlider').value = settings.pixelSize || this.defaultSettings.pixelSize;
+                document.getElementById('thresholdSlider').value = settings.threshold || this.defaultSettings.threshold;
+                document.getElementById('stretchSlider').value = settings.stretch || this.defaultSettings.stretch;
+                document.getElementById('sensitivitySlider').value = settings.sensitivity || this.defaultSettings.sensitivity;
+                document.getElementById('opacitySlider').value = settings.opacity || this.defaultSettings.opacity;
+                document.getElementById('motionTypeSelect').value = settings.motionType || this.defaultSettings.motionType;
+                document.getElementById('speedSlider').value = settings.speed || this.defaultSettings.speed;
+                document.getElementById('aspectRatioSelect').value = settings.aspectRatio || this.defaultSettings.aspectRatio;
+                document.getElementById('hexColorInput').value = settings.primaryColor || this.defaultSettings.primaryColor;
+                
+                // Update corresponding display elements
+                document.getElementById('sizeValue').textContent = settings.pixelSize || this.defaultSettings.pixelSize;
+                document.getElementById('thresholdValue').textContent = settings.threshold || this.defaultSettings.threshold;
+                document.getElementById('stretchValue').textContent = (settings.stretch || this.defaultSettings.stretch).toString().padStart(2, '0');
+                document.getElementById('sensitivityValue').textContent = settings.sensitivity || this.defaultSettings.sensitivity;
+                document.getElementById('opacityValue').textContent = settings.opacity || this.defaultSettings.opacity;
+                document.querySelector('#speedSlider + .compact-slider-value').textContent = `${(settings.speed || this.defaultSettings.speed).toFixed(1)}x`;
+                
+                // Apply aspect ratio if it's not original
+                if (settings.aspectRatio && settings.aspectRatio !== 'original') {
+                    this.setAspectRatio(settings.aspectRatio);
+                }
+                
+                // Update background color and visual elements
+                this.updateBackgroundColor(settings.primaryColor || this.defaultSettings.primaryColor);
+                
+            } catch (e) {
+                console.error('Error loading saved settings:', e);
+            }
+        }
+    }
+
+    resetSettings() {
+        // Update UI elements with default values
+        document.getElementById('sizeSlider').value = this.defaultSettings.pixelSize;
+        document.getElementById('thresholdSlider').value = this.defaultSettings.threshold;
+        document.getElementById('stretchSlider').value = this.defaultSettings.stretch;
+        document.getElementById('sensitivitySlider').value = this.defaultSettings.sensitivity;
+        document.getElementById('opacitySlider').value = this.defaultSettings.opacity;
+        document.getElementById('motionTypeSelect').value = this.defaultSettings.motionType;
+        document.getElementById('speedSlider').value = this.defaultSettings.speed;
+        document.getElementById('aspectRatioSelect').value = this.defaultSettings.aspectRatio;
+        document.getElementById('hexColorInput').value = this.defaultSettings.primaryColor;
+        
+        // Update corresponding display elements
+        document.getElementById('sizeValue').textContent = this.defaultSettings.pixelSize;
+        document.getElementById('thresholdValue').textContent = this.defaultSettings.threshold;
+        document.getElementById('stretchValue').textContent = this.defaultSettings.stretch.toString().padStart(2, '0');
+        document.getElementById('sensitivityValue').textContent = this.defaultSettings.sensitivity;
+        document.getElementById('opacityValue').textContent = this.defaultSettings.opacity;
+        document.querySelector('#speedSlider + .compact-slider-value').textContent = `${this.defaultSettings.speed.toFixed(1)}x`;
+        
+        // Reset aspect ratio to original
+        this.setAspectRatio(this.defaultSettings.aspectRatio);
+        
+        // Update background color and visual elements
+        this.updateBackgroundColor(this.defaultSettings.primaryColor);
+        
+        // Remove saved settings from localStorage
+        localStorage.removeItem('pixelToolSettings');
+        
+        // Re-process image if one is loaded
+        if (this.originalImage) {
+            this.processImage();
+        }
+    }
+
     handleFileSelect(file) {
         if (!file || !this.isValidImageFile(file)) {
             alert('Please select a valid image file (PNG, JPG, or WebP)');
@@ -932,6 +1042,10 @@ class ImagePixelationTool {
             img.onload = () => {
                 this.originalImage = img;
                 this.setupCanvas(img);
+                
+                // Load saved settings before processing the image
+                this.loadSavedSettings();
+                
                 this.processImage();
                 document.getElementById('dropZone').classList.add('has-image');
             };
@@ -946,24 +1060,123 @@ class ImagePixelationTool {
         const maxHeight = 2000; // Increased for high quality output
         let { width, height } = img;
 
-        // Only scale down if image is extremely large to prevent performance issues
-        if (width > maxWidth || height > maxHeight) {
-            const ratio = Math.min(maxWidth / width, maxHeight / height);
-            width *= ratio;
-            height *= ratio;
+        // Apply aspect ratio settings
+        if (this.aspectRatio === '9:16') {
+            // 9:16 aspect ratio (1080x1920)
+            width = 1080;
+            height = 1920;
+        } else if (this.aspectRatio === '4:5') {
+            // 4:5 aspect ratio (1080x1350)
+            width = 1080;
+            height = 1350;
+        } else {
+            // Original aspect ratio - use actual image dimensions without stretching
+            width = img.width;
+            height = img.height;
+            
+            // Only scale down if image is extremely large to prevent performance issues
+            if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width = Math.floor(width * ratio);
+                height = Math.floor(height * ratio);
+            }
         }
 
-        // Set both canvases to the same size - simpler and faster
+        // Set both canvases to the calculated size
         this.canvas.width = width;
         this.canvas.height = height;
         this.pixelCanvas.width = width;
         this.pixelCanvas.height = height;
 
-        // Draw original image
-        this.ctx.drawImage(img, 0, 0, width, height);
+        // Draw original image (properly handled for each aspect ratio)
+        if (this.aspectRatio === 'original') {
+            // For original, maintain proportions by drawing at calculated dimensions
+            this.ctx.drawImage(img, 0, 0, width, height);
+        } else {
+            // For fixed aspect ratios, crop the image to fill the canvas exactly
+            const imgAspect = img.width / img.height;
+            const canvasAspect = width / height;
+            
+            let sourceWidth, sourceHeight, sourceX, sourceY;
+            
+            if (imgAspect > canvasAspect) {
+                // Image is wider than target aspect ratio - crop sides
+                sourceHeight = img.height;
+                sourceWidth = img.height * canvasAspect;
+                sourceX = (img.width - sourceWidth) / 2;
+                sourceY = 0;
+            } else {
+                // Image is taller than target aspect ratio - crop top/bottom
+                sourceWidth = img.width;
+                sourceHeight = img.width / canvasAspect;
+                sourceX = 0;
+                sourceY = (img.height - sourceHeight) / 2;
+            }
+            
+            // Clear canvas first
+            this.ctx.clearRect(0, 0, width, height);
+            
+            // Draw the cropped portion of the image to fill the entire canvas
+            // This maintains the original image proportions while cropping to fit
+            this.ctx.drawImage(
+                img, 
+                sourceX, sourceY, sourceWidth, sourceHeight,  // Source rectangle (cropped area)
+                0, 0, width, height  // Destination rectangle (entire canvas)
+            );
+        }
         
         // Store the image data for SVG export
         this.currentImageData = this.ctx.getImageData(0, 0, width, height);
+    }
+
+    // Helper method to draw original image with proper aspect ratio handling
+    drawOriginalImageToContext(ctx, targetWidth = null, targetHeight = null) {
+        if (!this.originalImage) return;
+        
+        // Default to canvas size if not specified
+        if (targetWidth === null) targetWidth = ctx.canvas.width;
+        if (targetHeight === null) targetHeight = ctx.canvas.height;
+        
+        if (this.aspectRatio === 'original') {
+            // For original, draw at actual size or scaled proportionally
+            const scaleX = targetWidth / this.originalImage.width;
+            const scaleY = targetHeight / this.originalImage.height;
+            const scale = Math.min(scaleX, scaleY);
+            
+            const drawWidth = this.originalImage.width * scale;
+            const drawHeight = this.originalImage.height * scale;
+            const drawX = (targetWidth - drawWidth) / 2;
+            const drawY = (targetHeight - drawHeight) / 2;
+            
+            ctx.drawImage(this.originalImage, drawX, drawY, drawWidth, drawHeight);
+        } else {
+            // For fixed aspect ratios, crop the image to fill completely
+            const imgAspect = this.originalImage.width / this.originalImage.height;
+            const targetAspect = targetWidth / targetHeight;
+            
+            let sourceWidth, sourceHeight, sourceX, sourceY;
+            
+            if (imgAspect > targetAspect) {
+                // Image is wider than target aspect ratio - crop sides
+                sourceHeight = this.originalImage.height;
+                sourceWidth = this.originalImage.height * targetAspect;
+                sourceX = (this.originalImage.width - sourceWidth) / 2;
+                sourceY = 0;
+            } else {
+                // Image is taller than target aspect ratio - crop top/bottom
+                sourceWidth = this.originalImage.width;
+                sourceHeight = this.originalImage.width / targetAspect;
+                sourceX = 0;
+                sourceY = (this.originalImage.height - sourceHeight) / 2;
+            }
+            
+            // Draw the cropped portion to fill the entire target area
+            ctx.drawImage(
+                this.originalImage, 
+                sourceX, sourceY, sourceWidth, sourceHeight,  // Source rectangle (cropped area)
+                0, 0, targetWidth, targetHeight  // Destination rectangle (entire target)
+            );
+        }
     }
 
     setColorMode(isColor) {
@@ -1335,7 +1548,7 @@ class ImagePixelationTool {
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
-            this.pixelCtx.drawImage(this.originalImage, 0, 0, width, height);
+            this.drawOriginalImageToContext(this.pixelCtx);
             this.pixelCtx.globalAlpha = 1.0; // Reset opacity for bars
         }
         
@@ -1409,7 +1622,7 @@ class ImagePixelationTool {
                     this.pixelCtx.beginPath();
                     this.pixelCtx.rect(x, y, barWidth, totalBarHeight);
                     this.pixelCtx.clip();
-                    this.pixelCtx.drawImage(this.originalImage, 0, 0, width, height);
+                    this.drawOriginalImageToContext(this.pixelCtx);
                     this.pixelCtx.restore();
                 } else {
                     // Normal mode: draw colored bar

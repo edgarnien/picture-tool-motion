@@ -22,7 +22,7 @@
                     <button id="backgroundRemovalBtn" class="background-btn">REMOVE BACKGROUND: OFF</button>
                 </div>
                 <div id="backgroundSensitivity" class="slider-group" style="display: none;">
-                    <label class="slider-label">SENSITIVITY:</label>
+                    <label class="slider-label">SENSITIVITY</label>
                     <div class="slider-container">
                         <input type="range" id="sensitivitySlider" min="10" max="100" value="30" class="slider">
                         <span id="sensitivityValue" class="slider-value">30</span>
@@ -32,25 +32,33 @@
 
             <!-- File Format and Upload -->
             <div class="upload-section">
-                <label class="format-label">PNG, JPG, WEBP:</label>
+                <label class="format-label">PNG, JPG, WEBP</label>
                 <div class="upload-dropdown">
                     <button id="uploadBtn" class="upload-btn">UPLOAD ▼</button>
                     <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp" hidden>
                 </div>
             </div>
 
+            <!-- Reset Settings Button -->
+            <div class="reset-section" style="margin: 10px 0;">
+                <button id="resetSettingsBtn" class="reset-btn" title="Reset all settings to default values" 
+                        style="width: 100%; background-color: #444 !important; color: #fff !important; border: 2px solid #666 !important; padding: 8px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; cursor: pointer;">
+                    RESET SETTINGS
+                </button>
+            </div>
+
             <!-- Size Slider -->
             <div class="slider-group">
-                <label class="slider-label">SIZE:</label>
+                <label class="slider-label">SIZE</label>
                 <div class="slider-container">
-                    <input type="range" id="sizeSlider" min="1" max="100" value="24" class="slider">
-                    <span id="sizeValue" class="slider-value">24</span>
+                    <input type="range" id="sizeSlider" min="1" max="100" value="80" class="slider">
+                    <span id="sizeValue" class="slider-value">80</span>
                 </div>
             </div>
 
             <!-- Threshold Slider -->
             <div class="slider-group">
-                                <label for="thresholdSlider">Threshold:</label>
+                <label class="slider-label">THRESHOLD</label>
                 <div class="slider-container">
                     <input type="range" id="thresholdSlider" min="0" max="100" value="0" class="slider">
                     <span id="thresholdValue" class="slider-value">0</span>
@@ -59,7 +67,7 @@
 
             <!-- Stretch Factor Slider -->
             <div class="slider-group">
-                <label class="slider-label">STRETCH FACTOR:</label>
+                <label class="slider-label">STRETCH FACTOR</label>
                 <div class="slider-container">
                     <input type="range" id="stretchSlider" min="0" max="100" value="0" class="slider">
                     <span id="stretchValue" class="slider-value">00</span>
@@ -72,7 +80,7 @@
                     <button id="backgroundImageBtn" class="background-btn">SHOW ORIGINAL: OFF</button>
                 </div>
                 <div id="backgroundOpacity" class="slider-group" style="display: none;">
-                    <label class="slider-label">OPACITY:</label>
+                    <label class="slider-label">OPACITY</label>
                     <div class="slider-container">
                         <input type="range" id="opacitySlider" min="0" max="100" value="30" class="slider">
                         <span id="opacityValue" class="slider-value">30</span>
@@ -86,7 +94,7 @@
                     <button id="backgroundColorBtn" class="background-btn">BACKGROUND COLOR: OFF</button>
                 </div>
                 <div id="backgroundColorControls" class="color-controls" style="display: none;">
-                    <label class="slider-label">HEX COLOR:</label>
+                    <label class="slider-label">HEX COLOR</label>
                     <div class="color-input-container">
                         <input type="text" id="hexColorInput" class="hex-input" value="#FFFFFF" placeholder="#FFFFFF" maxlength="7">
                         <div id="colorPreview" class="color-preview" title="Click to open color wheel"></div>
@@ -131,12 +139,19 @@
                 </select>
                 
                 <div class="compact-slider-container" style="margin: 4px 0;">
-                    <label class="compact-slider-label" style="font-size: 10px; color: #fff; text-transform: uppercase; font-weight: bold;">SPEED:</label>
+                    <label class="compact-slider-label" style="font-size: 10px; color: #fff; text-transform: uppercase; font-weight: bold;">SPEED</label>
                     <input type="range" id="speedSlider" min="0.5" max="3" step="0.1" value="1" 
                            style="width: 100%; margin: 2px 0; background: #333; border-radius: 4px;" 
                            title="Animation Speed (0.5x - 3x)">
                     <div class="compact-slider-value" style="font-size: 9px; color: #aaa; text-align: center;">1.0x</div>
                 </div>
+                
+                <div class="section-label">ASPECT:</div>
+                <select id="aspectRatioSelect" class="compact-select" title="Aspect Ratio" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; width: 100%;">
+                    <option value="original">ORIGINAL</option>
+                    <option value="9:16">9:16 (1080x1920)</option>
+                    <option value="4:5">4:5 (1080x1350)</option>
+                </select>
                 
                 <div class="section-label">DOWNLOAD:</div>
                 <div class="compact-buttons-row">
@@ -146,7 +161,6 @@
                 <div class="compact-buttons-row">
                     <button id="pngDownloadBtn" class="compact-btn" title="Download PNG" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">PNG</button>
                     <select id="videoFormatSelect" class="compact-select" title="Video Format" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">
-                        <option value="auto">AUTO</option>
                         <option value="mp4">MP4</option>
                         <option value="webm">WEBM</option>
                     </select>
