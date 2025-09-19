@@ -30,7 +30,7 @@ class ImagePixelationTool {
             stretch: 3,
             sensitivity: 30,
             opacity: 30,
-            motionType: 'BUILD_UP',
+            motionType: 'motion1',
             speed: 1.0,
             aspectRatio: 'original',
             primaryColor: '#ffffff'
@@ -369,7 +369,7 @@ class ImagePixelationTool {
     }
 
     runMotion1Animation() {
-        // BUILD UP animation - loops continuously
+        // BUILD UP animation - builds up then builds down in a continuous loop
         // Clear canvas for animation
         this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -387,14 +387,24 @@ class ImagePixelationTool {
             this.pixelCtx.globalAlpha = 1.0; // Reset opacity for bars
         }
         
-        // Create looping build-up effect
-        const loopFrames = this.motionBarTotalFrames * 2 / this.animationSpeed;
-        const currentFrame = this.motionAnimationFrame % loopFrames; // Loop the animation
-        const barsPerFrame = Math.max(1, Math.ceil(this.motionBarOrder.length / loopFrames));
-        const endIdx = Math.min((currentFrame + 1) * barsPerFrame, this.motionBarOrder.length);
+        // Create looping build-up and build-down effect
+        const halfCycle = this.motionBarTotalFrames / this.animationSpeed; // Time for one direction
+        const fullCycle = halfCycle * 2; // Complete up + down cycle
+        const currentFrame = this.motionAnimationFrame % fullCycle; // Loop the animation
         
-        // Draw only the bars that should be visible up to this frame
-        for (let i = 0; i < endIdx; i++) {
+        let visibleBarCount;
+        if (currentFrame < halfCycle) {
+            // BUILD UP phase: 0 to all bars
+            const progress = currentFrame / halfCycle;
+            visibleBarCount = Math.floor(progress * this.motionBarOrder.length);
+        } else {
+            // BUILD DOWN phase: all bars to 0
+            const downProgress = (currentFrame - halfCycle) / halfCycle;
+            visibleBarCount = Math.floor((1 - downProgress) * this.motionBarOrder.length);
+        }
+        
+        // Draw only the bars that should be visible
+        for (let i = 0; i < visibleBarCount; i++) {
             const bar = this.motionBarOrder[i];
             this.drawBar(bar);
         }
@@ -1328,6 +1338,16 @@ class ImagePixelationTool {
     closeColorWheel() {
         const popup = document.getElementById('colorWheelPopup');
         popup.style.display = 'none';
+        
+        // Clean up global event handlers
+        if (this.colorWheelHandlers) {
+            document.removeEventListener('mousemove', this.colorWheelHandlers.handleMouseMove);
+            document.removeEventListener('mouseup', this.colorWheelHandlers.handleMouseUp);
+            this.colorWheelHandlers = null;
+        }
+        
+        // Reset cursor position
+        this.currentCursorPos = null;
     }
 
     initializeColorWheel() {
@@ -1336,6 +1356,11 @@ class ImagePixelationTool {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const radius = Math.min(centerX, centerY) - 10;
+
+        // Store wheel properties for cursor drawing
+        this.wheelCenter = { x: centerX, y: centerY };
+        this.wheelRadius = radius;
+        this.currentCursorPos = null;
 
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1360,27 +1385,37 @@ class ImagePixelationTool {
         // Add click and drag handlers for color selection
         canvas.onclick = (e) => this.selectColorFromWheel(e);
         
-        // Add drag functionality for live color updates
+        // Add drag functionality for live color updates with global mouse tracking
         let isDragging = false;
+        
         canvas.onmousedown = (e) => {
             isDragging = true;
             this.selectColorFromWheel(e);
+            e.preventDefault();
         };
         
-        canvas.onmousemove = (e) => {
+        // Use global mouse events for better dragging experience
+        const handleMouseMove = (e) => {
             if (isDragging) {
-                this.selectColorFromWheel(e);
+                this.selectColorFromWheel(e, true); // Pass true for global tracking
             }
         };
         
-        canvas.onmouseup = () => {
-            isDragging = false;
+        const handleMouseUp = () => {
+            if (isDragging) {
+                isDragging = false;
+                // Clear cursor when stopping drag
+                this.currentCursorPos = null;
+                this.redrawColorWheel();
+            }
         };
         
-        // Handle mouse leave to stop dragging
-        canvas.onmouseleave = () => {
-            isDragging = false;
-        };
+        // Attach global mouse events
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        
+        // Store event handlers for cleanup
+        this.colorWheelHandlers = { handleMouseMove, handleMouseUp };
         
         // Add brightness slider handler for live updates
         const brightnessSlider = document.getElementById('brightnessSlider');
@@ -1396,32 +1431,108 @@ class ImagePixelationTool {
         };
     }
 
-    selectColorFromWheel(e) {
+    redrawColorWheel() {
+        const canvas = document.getElementById('colorWheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const centerX = this.wheelCenter.x;
+        const centerY = this.wheelCenter.y;
+        const radius = this.wheelRadius;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw color wheel
+        for (let angle = 0; angle < 360; angle += 1) {
+            const startAngle = (angle - 1) * Math.PI / 180;
+            const endAngle = angle * Math.PI / 180;
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+            ctx.arc(centerX, centerY, radius * 0.3, endAngle, startAngle, true);
+            ctx.closePath();
+            
+            const hue = angle;
+            const saturation = 100;
+            const lightness = 50;
+            ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            ctx.fill();
+        }
+
+        // Draw cursor circle if position is set
+        if (this.currentCursorPos) {
+            ctx.beginPath();
+            ctx.arc(this.currentCursorPos.x, this.currentCursorPos.y, 6, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Add black outline for better visibility
+            ctx.beginPath();
+            ctx.arc(this.currentCursorPos.x, this.currentCursorPos.y, 6, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+
+    selectColorFromWheel(e, isGlobalEvent = false) {
         const canvas = document.getElementById('colorWheelCanvas');
         const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        
+        let x, y;
+        if (isGlobalEvent) {
+            // For global mouse events, calculate relative to canvas
+            x = e.clientX - rect.left;
+            y = e.clientY - rect.top;
+        } else {
+            // For canvas-local events
+            x = e.clientX - rect.left;
+            y = e.clientY - rect.top;
+        }
+        
+        const centerX = this.wheelCenter.x;
+        const centerY = this.wheelCenter.y;
         
         // Calculate distance from center
         const dx = x - centerX;
         const dy = y - centerY;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const radius = Math.min(centerX, centerY) - 10;
+        const radius = this.wheelRadius;
         
-        // Check if click is within the color wheel
-        if (distance >= radius * 0.3 && distance <= radius) {
-            // Calculate angle (hue)
-            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        // For global events, allow selection even outside wheel bounds (clamp to wheel edges)
+        let finalX = x;
+        let finalY = y;
+        let finalDistance = distance;
+        
+        if (isGlobalEvent || distance >= radius * 0.3) {
+            // Clamp position to wheel bounds for color calculation
+            if (distance > radius) {
+                const ratio = radius / distance;
+                finalX = centerX + dx * ratio;
+                finalY = centerY + dy * ratio;
+                finalDistance = radius;
+            } else if (distance < radius * 0.3) {
+                const ratio = (radius * 0.3) / distance;
+                finalX = centerX + dx * ratio;
+                finalY = centerY + dy * ratio;
+                finalDistance = radius * 0.3;
+            }
+            
+            // Calculate angle (hue) from final position
+            const finalDx = finalX - centerX;
+            const finalDy = finalY - centerY;
+            let angle = Math.atan2(finalDy, finalDx) * 180 / Math.PI;
             if (angle < 0) angle += 360;
             
             // Calculate saturation based on distance from center
-            const saturation = Math.min(100, ((distance - radius * 0.3) / (radius * 0.7)) * 100);
+            const saturation = Math.min(100, ((finalDistance - radius * 0.3) / (radius * 0.7)) * 100);
             
             // Store current selection for brightness changes
             this.lastSelectedHue = angle;
             this.lastSelectedSaturation = saturation;
+            
+            // Update cursor position (use actual mouse position, not clamped position)
+            this.currentCursorPos = { x: finalX, y: finalY };
             
             // Get brightness from slider
             const brightness = document.getElementById('brightnessSlider').value;
@@ -1433,7 +1544,9 @@ class ImagePixelationTool {
             
             // Update color input and preview (but keep wheel open for live updates)
             this.updateBackgroundColor(hex);
-            // Don't close the wheel - allow live color changes
+            
+            // Redraw wheel with cursor
+            this.redrawColorWheel();
         }
     }
 
