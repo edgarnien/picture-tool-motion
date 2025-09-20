@@ -27,7 +27,7 @@ class ImagePixelationTool {
         this.defaultSettings = {
             pixelSize: 80,
             threshold: 0,
-            stretch: 3,
+            stretch: 0,
             sensitivity: 30,
             opacity: 30,
             motionType: 'motion1',
@@ -62,6 +62,17 @@ class ImagePixelationTool {
 
         uploadBtn.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => this.handleFileSelect(e.target.files[0]));
+
+        // Mobile upload - click on main content area to upload
+        const mainContent = document.querySelector('.main-content');
+        const isMobile = () => window.innerWidth <= 768;
+        
+        mainContent.addEventListener('click', (e) => {
+            if (isMobile() && !this.originalImage) {
+                // Only trigger on mobile and when no image is loaded
+                fileInput.click();
+            }
+        });
 
         // Drag and drop events
         dropZone.addEventListener('dragover', (e) => {
@@ -152,7 +163,7 @@ class ImagePixelationTool {
         // Speed slider for animation
         document.getElementById('speedSlider').addEventListener('input', (e) => {
             this.animationSpeed = parseFloat(e.target.value);
-            document.querySelector('#speedSlider + .compact-slider-value').textContent = `${this.animationSpeed.toFixed(1)}x`;
+            document.getElementById('speedValue').textContent = `${this.animationSpeed.toFixed(1)}x`;
             this.saveCurrentSettings(); // Save settings after change
         });
         
@@ -227,7 +238,7 @@ class ImagePixelationTool {
             return;
         }
         this.motionAnimationRunning = true;
-        document.getElementById('startStopMotionBtn').textContent = 'Stop Animation';
+        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? 'STOP' : 'STOP ANIMATION';
         this.prepareMotionBarOrder();
         this.motionAnimationFrame = 0;
         this.runMotionAnimation();
@@ -235,7 +246,7 @@ class ImagePixelationTool {
 
     stopMotionAnimation() {
         this.motionAnimationRunning = false;
-        document.getElementById('startStopMotionBtn').textContent = 'Start Animation';
+        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? 'START' : 'START ANIMATION';
         if (this.motionAnimationRequestId) {
             cancelAnimationFrame(this.motionAnimationRequestId);
             this.motionAnimationRequestId = null;
@@ -989,7 +1000,7 @@ class ImagePixelationTool {
                 document.getElementById('stretchValue').textContent = (settings.stretch || this.defaultSettings.stretch).toString().padStart(2, '0');
                 document.getElementById('sensitivityValue').textContent = settings.sensitivity || this.defaultSettings.sensitivity;
                 document.getElementById('opacityValue').textContent = settings.opacity || this.defaultSettings.opacity;
-                document.querySelector('#speedSlider + .compact-slider-value').textContent = `${(settings.speed || this.defaultSettings.speed).toFixed(1)}x`;
+                document.querySelector('#speedValue').textContent = `${(settings.speed || this.defaultSettings.speed).toFixed(1)}x`;
                 
                 // Apply aspect ratio if it's not original
                 if (settings.aspectRatio && settings.aspectRatio !== 'original') {
@@ -1006,6 +1017,35 @@ class ImagePixelationTool {
     }
 
     resetSettings() {
+        // Reset all toggle button states to OFF
+        this.backgroundRemovalEnabled = false;
+        this.backgroundImageEnabled = false;
+        this.backgroundColorEnabled = false;
+        this.reverseMaskEnabled = false;
+        
+        // Update background removal UI
+        const backgroundRemovalBtn = document.getElementById('backgroundRemovalBtn');
+        backgroundRemovalBtn.textContent = 'REMOVE BACK: OFF';
+        backgroundRemovalBtn.classList.remove('active');
+        document.getElementById('sensitivityCard').style.display = 'none';
+        
+        // Update background image UI
+        const backgroundImageBtn = document.getElementById('backgroundImageBtn');
+        backgroundImageBtn.textContent = 'SHOW IMAGE: OFF';
+        backgroundImageBtn.classList.remove('active');
+        document.getElementById('opacityCard').style.display = 'none';
+        
+        // Update background color UI
+        const backgroundColorBtn = document.getElementById('backgroundColorBtn');
+        backgroundColorBtn.textContent = 'BACK COLOR: OFF';
+        backgroundColorBtn.classList.remove('active');
+        document.getElementById('colorCard').style.display = 'none';
+        
+        // Update reverse mask UI
+        const reverseMaskBtn = document.getElementById('reverseMaskBtn');
+        reverseMaskBtn.textContent = 'MASK: OFF';
+        reverseMaskBtn.classList.remove('active');
+        
         // Update UI elements with default values
         document.getElementById('sizeSlider').value = this.defaultSettings.pixelSize;
         document.getElementById('thresholdSlider').value = this.defaultSettings.threshold;
@@ -1023,7 +1063,7 @@ class ImagePixelationTool {
         document.getElementById('stretchValue').textContent = this.defaultSettings.stretch.toString().padStart(2, '0');
         document.getElementById('sensitivityValue').textContent = this.defaultSettings.sensitivity;
         document.getElementById('opacityValue').textContent = this.defaultSettings.opacity;
-        document.querySelector('#speedSlider + .compact-slider-value').textContent = `${this.defaultSettings.speed.toFixed(1)}x`;
+        document.querySelector('#speedValue').textContent = `${this.defaultSettings.speed.toFixed(1)}x`;
         
         // Reset aspect ratio to original
         this.setAspectRatio(this.defaultSettings.aspectRatio);
@@ -1071,7 +1111,11 @@ class ImagePixelationTool {
         let { width, height } = img;
 
         // Apply aspect ratio settings
-        if (this.aspectRatio === '9:16') {
+        if (this.aspectRatio === '16:9') {
+            // 16:9 aspect ratio (1920x1080) for presentations
+            width = 1920;
+            height = 1080;
+        } else if (this.aspectRatio === '9:16') {
             // 9:16 aspect ratio (1080x1920)
             width = 1080;
             height = 1920;
@@ -1208,16 +1252,16 @@ class ImagePixelationTool {
     toggleBackgroundRemoval() {
         this.backgroundRemovalEnabled = !this.backgroundRemovalEnabled;
         const btn = document.getElementById('backgroundRemovalBtn');
-        const sensitivitySection = document.getElementById('backgroundSensitivity');
+        const sensitivityCard = document.getElementById('sensitivityCard');
         
         if (this.backgroundRemovalEnabled) {
-            btn.textContent = 'REMOVE BACKGROUND: ON';
+            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'REMOVE BACK: ON';
             btn.classList.add('active');
-            sensitivitySection.style.display = 'flex';
+            sensitivityCard.style.display = 'block';
         } else {
-            btn.textContent = 'REMOVE BACKGROUND: OFF';
+            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'REMOVE BACK: OFF';
             btn.classList.remove('active');
-            sensitivitySection.style.display = 'none';
+            sensitivityCard.style.display = 'none';
         }
         
         if (this.originalImage) {
@@ -1228,16 +1272,16 @@ class ImagePixelationTool {
     toggleBackgroundImage() {
         this.backgroundImageEnabled = !this.backgroundImageEnabled;
         const btn = document.getElementById('backgroundImageBtn');
-        const opacitySection = document.getElementById('backgroundOpacity');
+        const opacityCard = document.getElementById('opacityCard');
         
         if (this.backgroundImageEnabled) {
-            btn.textContent = 'SHOW ORIGINAL: ON';
+            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'SHOW IMAGE: ON';
             btn.classList.add('active');
-            opacitySection.style.display = 'flex';
+            opacityCard.style.display = 'block';
         } else {
-            btn.textContent = 'SHOW ORIGINAL: OFF';
+            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'SHOW IMAGE: OFF';
             btn.classList.remove('active');
-            opacitySection.style.display = 'none';
+            opacityCard.style.display = 'none';
         }
         
         if (this.originalImage) {
@@ -1248,16 +1292,16 @@ class ImagePixelationTool {
     toggleBackgroundColor() {
         this.backgroundColorEnabled = !this.backgroundColorEnabled;
         const btn = document.getElementById('backgroundColorBtn');
-        const colorControls = document.getElementById('backgroundColorControls');
+        const colorCard = document.getElementById('colorCard');
         
         if (this.backgroundColorEnabled) {
-            btn.textContent = 'BACKGROUND COLOR: ON';
+            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'BACK COLOR: ON';
             btn.classList.add('active');
-            colorControls.style.display = 'flex';
+            colorCard.style.display = 'block';
         } else {
-            btn.textContent = 'BACKGROUND COLOR: OFF';
+            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'BACK COLOR: OFF';
             btn.classList.remove('active');
-            colorControls.style.display = 'none';
+            colorCard.style.display = 'none';
         }
         
         if (this.originalImage) {
@@ -1382,6 +1426,9 @@ class ImagePixelationTool {
             ctx.fill();
         }
 
+        // Draw black and white sections in the center
+        this.drawBlackWhiteCenter(ctx, centerX, centerY, radius * 0.3);
+
         // Add click and drag handlers for color selection
         canvas.onclick = (e) => this.selectColorFromWheel(e);
         
@@ -1431,6 +1478,29 @@ class ImagePixelationTool {
         };
     }
 
+    drawBlackWhiteCenter(ctx, centerX, centerY, innerRadius) {
+        // Draw black semicircle (left half)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, innerRadius, Math.PI / 2, 3 * Math.PI / 2);
+        ctx.closePath();
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        
+        // Draw white semicircle (right half)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, innerRadius, -Math.PI / 2, Math.PI / 2);
+        ctx.closePath();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+        
+        // Add a thin border around the center circle
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#666666';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+
     redrawColorWheel() {
         const canvas = document.getElementById('colorWheelCanvas');
         const ctx = canvas.getContext('2d');
@@ -1457,6 +1527,9 @@ class ImagePixelationTool {
             ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
             ctx.fill();
         }
+
+        // Draw black and white sections in the center
+        this.drawBlackWhiteCenter(ctx, centerX, centerY, radius * 0.3);
 
         // Draw cursor circle if position is set
         if (this.currentCursorPos) {
@@ -1498,6 +1571,22 @@ class ImagePixelationTool {
         const dy = y - centerY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const radius = this.wheelRadius;
+        
+        // Check if click is in the black/white center area
+        if (distance <= radius * 0.3) {
+            // Determine if click is on black (left) or white (right) side
+            const isLeftSide = dx < 0;
+            const selectedColor = isLeftSide ? '#000000' : '#FFFFFF';
+            
+            // Update cursor position to center of selected half
+            const offsetX = isLeftSide ? -radius * 0.15 : radius * 0.15;
+            this.currentCursorPos = { x: centerX + offsetX, y: centerY };
+            
+            // Update color
+            this.updateBackgroundColor(selectedColor);
+            this.redrawColorWheel();
+            return;
+        }
         
         // For global events, allow selection even outside wheel bounds (clamp to wheel edges)
         let finalX = x;
@@ -1591,10 +1680,10 @@ class ImagePixelationTool {
         const btn = document.getElementById('reverseMaskBtn');
         
         if (this.reverseMaskEnabled) {
-            btn.textContent = 'REVERSE MASK: ON';
+            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'MASK: ON';
             btn.classList.add('active');
         } else {
-            btn.textContent = 'REVERSE MASK: OFF';
+            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'MASK: OFF';
             btn.classList.remove('active');
         }
         

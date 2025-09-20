@@ -10,159 +10,189 @@
     <div class="container">
         <!-- Controls Panel -->
         <div class="controls-panel">
-            <!-- Color Mode Toggle -->
-            <div class="mode-toggle">
-                <button id="coloredBtn" class="mode-btn active">COLORED</button>
-                <button id="bwBtn" class="mode-btn">BLACK & WHITE</button>
-            </div>
-
-            <!-- Background Removal (only for colored mode) -->
-            <div id="backgroundSection" class="background-section">
-                <div class="background-toggle">
-                    <button id="backgroundRemovalBtn" class="background-btn">REMOVE BACKGROUND: OFF</button>
-                </div>
-                <div id="backgroundSensitivity" class="slider-group" style="display: none;">
-                    <label class="slider-label">SENSITIVITY</label>
-                    <div class="slider-container">
-                        <input type="range" id="sensitivitySlider" min="10" max="100" value="30" class="slider">
-                        <span id="sensitivityValue" class="slider-value">30</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- File Format and Upload -->
-            <div class="upload-section">
-                <label class="format-label">PNG, JPG, WEBP</label>
-                <div class="upload-dropdown">
-                    <button id="uploadBtn" class="upload-btn">UPLOAD ▼</button>
+            <!-- Upload Section -->
+            <div class="section-label">UPLOAD</div>
+            <div class="mobile-section">
+                <div class="mobile-card upload-section">
+                    <div class="mobile-card-label">Image</div>
+                    <button id="uploadBtn" class="upload-btn">UPLOAD IMAGE</button>
                     <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp" hidden>
                 </div>
             </div>
 
-            <!-- Reset Settings Button -->
-            <div class="reset-section" style="margin: 10px 0;">
-                <button id="resetSettingsBtn" class="reset-btn" title="Reset all settings to default values">
-                    RESET SETTINGS
-                </button>
-            </div>
-
-            <!-- Size Slider -->
-            <div class="slider-group">
-                <label class="slider-label">SIZE</label>
-                <div class="slider-container">
-                    <input type="range" id="sizeSlider" min="1" max="100" value="80" class="slider">
-                    <span id="sizeValue" class="slider-value">80</span>
-                </div>
-            </div>
-
-            <!-- Threshold Slider -->
-            <div class="slider-group">
-                <label class="slider-label">THRESHOLD</label>
-                <div class="slider-container">
-                    <input type="range" id="thresholdSlider" min="0" max="100" value="0" class="slider">
-                    <span id="thresholdValue" class="slider-value">0</span>
-                </div>
-            </div>
-
-            <!-- Stretch Factor Slider -->
-            <div class="slider-group">
-                <label class="slider-label">STRETCH FACTOR</label>
-                <div class="slider-container">
-                    <input type="range" id="stretchSlider" min="0" max="100" value="0" class="slider">
-                    <span id="stretchValue" class="slider-value">00</span>
-                </div>
-            </div>
-
-            <!-- Background Image Toggle -->
-            <div class="background-image-section">
-                <div class="background-toggle">
-                    <button id="backgroundImageBtn" class="background-btn">SHOW ORIGINAL: OFF</button>
-                </div>
-                <div id="backgroundOpacity" class="slider-group" style="display: none;">
-                    <label class="slider-label">OPACITY</label>
-                    <div class="slider-container">
-                        <input type="range" id="opacitySlider" min="0" max="100" value="30" class="slider">
-                        <span id="opacityValue" class="slider-value">30</span>
+            <!-- Mode Selection -->
+            <div class="section-label">MODE</div>
+            <div class="mobile-section">
+                <div class="mobile-card">
+                    <div class="mobile-card-label">Style</div>
+                    <div class="mode-toggle">
+                        <button id="coloredBtn" class="mode-btn active">COLORED</button>
+                        <button id="bwBtn" class="mode-btn">BLACK & WHITE</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Background Color Section -->
-            <div class="background-color-section">
-                <div class="background-toggle">
-                    <button id="backgroundColorBtn" class="background-btn">BACKGROUND COLOR: OFF</button>
+            <!-- Reset Settings Button -->
+            <button id="resetSettingsBtn" class="reset-btn">RESET SETTINGS</button>
+
+            <!-- Adjustments -->
+            <div class="section-label">ADJUSTMENTS</div>
+            <div class="mobile-section">
+                <div class="mobile-card">
+                    <div class="slider-group">
+                        <div class="mobile-card-label">Size</div>
+                        <label class="slider-label">SIZE</label>
+                        <div class="slider-container">
+                            <input type="range" id="sizeSlider" min="1" max="100" value="80" class="slider">
+                            <span id="sizeValue" class="slider-value">80</span>
+                        </div>
+                    </div>
                 </div>
-                <div id="backgroundColorControls" class="color-controls" style="display: none;">
+                <div class="mobile-card">
+                    <div class="slider-group">
+                        <div class="mobile-card-label">Threshold</div>
+                        <label class="slider-label">THRESHOLD</label>
+                        <div class="slider-container">
+                            <input type="range" id="thresholdSlider" min="0" max="100" value="0" class="slider">
+                            <span id="thresholdValue" class="slider-value">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mobile-card">
+                    <div class="slider-group">
+                        <div class="mobile-card-label">Stretch</div>
+                        <label class="slider-label">STRETCH FACTOR</label>
+                        <div class="slider-container">
+                            <input type="range" id="stretchSlider" min="0" max="100" value="0" class="slider">
+                            <span id="stretchValue" class="slider-value">00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Background Controls -->
+            <div class="section-label">BACKGROUND</div>
+            <div class="mobile-section">
+                <div class="mobile-card">
+                    <div class="mobile-card-label">Remove Back</div>
+                    <button id="backgroundRemovalBtn" class="background-btn">REMOVE BACK: OFF</button>
+                </div>
+                <div class="mobile-card" id="sensitivityCard" style="display: none;">
+                    <div class="slider-group">
+                        <div class="mobile-card-label">Sensitivity</div>
+                        <label class="slider-label">SENSITIVITY</label>
+                        <div class="slider-container">
+                            <input type="range" id="sensitivitySlider" min="10" max="100" value="30" class="slider">
+                            <span id="sensitivityValue" class="slider-value">30</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mobile-card">
+                    <div class="mobile-card-label">Show Image</div>
+                    <button id="backgroundImageBtn" class="background-btn">SHOW IMAGE: OFF</button>
+                </div>
+                <div class="mobile-card" id="opacityCard" style="display: none;">
+                    <div class="slider-group">
+                        <div class="mobile-card-label">Opacity</div>
+                        <label class="slider-label">OPACITY</label>
+                        <div class="slider-container">
+                            <input type="range" id="opacitySlider" min="0" max="100" value="30" class="slider">
+                            <span id="opacityValue" class="slider-value">30</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Color & Effects -->
+            <div class="section-label">COLOR & EFFECTS</div>
+            <div class="mobile-section">
+                <div class="mobile-card">
+                    <div class="mobile-card-label">Back Color</div>
+                    <button id="backgroundColorBtn" class="background-btn">BACK COLOR: OFF</button>
+                </div>
+                <div class="mobile-card" id="colorCard" style="display: none;">
+                    <div class="mobile-card-label">Hex Color</div>
                     <label class="slider-label">HEX COLOR</label>
                     <div class="color-input-container">
                         <input type="text" id="hexColorInput" class="hex-input" value="#FFFFFF" placeholder="#FFFFFF" maxlength="7">
                         <div id="colorPreview" class="color-preview" title="Click to open color wheel"></div>
                     </div>
                 </div>
-                
-                <!-- Color Wheel Popup -->
-                <div id="colorWheelPopup" class="color-wheel-popup" style="display: none;">
-                    <div class="color-wheel-container">
-                        <div class="color-wheel-header">
-                            <span>Choose Color</span>
-                            <button id="closeColorWheel" class="close-btn">×</button>
-                        </div>
-                        <div class="color-wheel-content">
-                            <canvas id="colorWheelCanvas" width="200" height="200"></canvas>
-                            <div class="brightness-slider-container">
-                                <label>Brightness:</label>
-                                <input type="range" id="brightnessSlider" min="0" max="100" value="100" class="brightness-slider">
+                <div class="mobile-card">
+                    <div class="mobile-card-label">Mask</div>
+                    <button id="reverseMaskBtn" class="background-btn">MASK: OFF</button>
+                </div>
+            </div>
+
+            <!-- Bottom Settings Section: Animation, Aspect & Download -->
+            <div class="mobile-section bottom-settings-section">
+                <!-- Animation Controls -->
+                <div class="settings-subsection">
+                    <div class="section-label">ANIMATION:</div>
+                    <div class="mobile-card">
+                        <button id="startStopMotionBtn" class="background-btn">START/STOP</button>
+                    </div>
+                    <div class="mobile-card">
+                        <select id="motionTypeSelect" class="compact-select">
+                            <option value="motion1">BUILD UP</option>
+                            <option value="motion2">FLICKER</option>
+                            <option value="motion3">IMPULSE</option>
+                            <option value="motion4">WAVE</option>
+                        </select>
+                    </div>
+                    <div class="mobile-card">
+                        <div class="slider-group">
+                            <label class="slider-label">SPEED</label>
+                            <div class="slider-container">
+                                <input type="range" id="speedSlider" min="0.5" max="3" step="0.1" value="1" class="slider">
+                                <span id="speedValue" class="slider-value">1.0x</span>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Aspect Ratio -->
+                <div class="settings-subsection">
+                    <div class="section-label">ASPECT:</div>
+                    <div class="mobile-card">
+                        <select id="aspectRatioSelect" class="compact-select">
+                            <option value="original">ORIGINAL</option>
+                            <option value="9:16">9:16 (1080x1920)</option>
+                            <option value="4:5">4:5 (1080x1350)</option>
+                            <option value="16:9">16:9 (1920x1080)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Download Options -->
+                <div class="settings-subsection">
+                    <div class="section-label">DOWNLOAD:</div>
+                    <div class="download-buttons-grid">
+                        <button id="svgDownloadBtn" class="compact-btn">SVG</button>
+                        <button id="videoDownloadBtn" class="compact-btn">VIDEO</button>
+                        <button id="pngDownloadBtn" class="compact-btn">IMAGE</button>
+                        <select id="videoFormatSelect" class="compact-select">
+                            <option value="mp4">MP4</option>
+                            <option value="webm">WEBM</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
-            <!-- Reverse Mask Section -->
-            <div class="reverse-mask-section">
-                <div class="background-toggle">
-                    <button id="reverseMaskBtn" class="background-btn">REVERSE MASK: OFF</button>
-                </div>
-            </div>
-
-            <!-- Compact Download Buttons -->
-            <div class="compact-download-section">
-                <div class="section-label">ANIMATION:</div>
-                <button id="startStopMotionBtn" class="compact-btn animation-btn" title="Start/Stop Animation" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase;">START/STOP</button>
-                
-                <select id="motionTypeSelect" class="compact-select" title="Motion Type" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; width: 100%;">
-                    <option value="motion1">BUILD UP</option>
-                    <option value="motion2">FLICKER</option>
-                    <option value="motion3">IMPULSE</option>
-                    <option value="motion4">WAVE</option>
-                </select>
-                
-                <div class="compact-slider-container" style="margin: 4px 0;">
-                    <label class="compact-slider-label" style="font-size: 10px; color: #fff; text-transform: uppercase; font-weight: bold;">SPEED</label>
-                    <input type="range" id="speedSlider" min="0.5" max="3" step="0.1" value="1" 
-                           style="width: 100%; margin: 2px 0; background: #333; border-radius: 4px;" 
-                           title="Animation Speed (0.5x - 3x)">
-                    <div class="compact-slider-value" style="font-size: 9px; color: #aaa; text-align: center;">1.0x</div>
-                </div>
-                
-                <div class="section-label">ASPECT:</div>
-                <select id="aspectRatioSelect" class="compact-select" title="Aspect Ratio" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; width: 100%;">
-                    <option value="original">ORIGINAL</option>
-                    <option value="9:16">9:16 (1080x1920)</option>
-                    <option value="4:5">4:5 (1080x1350)</option>
-                </select>
-                
-                <div class="section-label">DOWNLOAD:</div>
-                <div class="compact-buttons-row">
-                    <button id="svgDownloadBtn" class="compact-btn" title="Download SVG" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">SVG</button>
-                    <button id="videoDownloadBtn" class="compact-btn" title="Download Video" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">VIDEO</button>
-                </div>
-                <div class="compact-buttons-row">
-                    <button id="pngDownloadBtn" class="compact-btn" title="Download PNG" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">PNG</button>
-                    <select id="videoFormatSelect" class="compact-select" title="Video Format" style="background-color: #000000 !important; color: #ffffff !important; border: 2px solid #666 !important; padding: 8px 6px; border-radius: 8px; font-weight: bold; font-size: 11px; text-transform: uppercase; flex: 1;">
-                        <option value="mp4">MP4</option>
-                        <option value="webm">WEBM</option>
-                    </select>
+            <!-- Color Wheel Popup -->
+            <div id="colorWheelPopup" class="color-wheel-popup" style="display: none;">
+                <div class="color-wheel-container">
+                    <div class="color-wheel-header">
+                        <span>Choose Color</span>
+                        <button id="closeColorWheel" class="close-btn">×</button>
+                    </div>
+                    <div class="color-wheel-content">
+                        <canvas id="colorWheelCanvas" width="200" height="200"></canvas>
+                        <div class="brightness-slider-container">
+                            <label>Brightness:</label>
+                            <input type="range" id="brightnessSlider" min="0" max="100" value="100" class="brightness-slider">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
