@@ -631,6 +631,15 @@ select.compact-select option,
     background-color: rgba(0, 0, 0, 0.2) !important;
 }
 
+/* Ensure bottom settings section works on both desktop and mobile */
+@media (max-width: 768px) {
+    .bottom-settings-section {
+        display: block !important;
+        flex-direction: column !important;
+        overflow-x: visible !important;
+    }
+}
+
 /* Settings subsections within the bottom container - no separators */
 .settings-subsection {
     margin-bottom: 15px;
