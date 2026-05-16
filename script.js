@@ -1,28 +1,39 @@
 class ImagePixelationTool {
     constructor() {
+        // Initialize upload system FIRST - this is critical and must never fail
+        this.initializeUploadSystem();
+
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.pixelCanvas = document.getElementById('pixelCanvas');
         this.pixelCtx = this.pixelCanvas.getContext('2d');
-        this.originalImage = null;
-        this.currentImageData = null;
+
+        // Multi-image state management
+        this.images = []; // Array of {img, id, thumbnailUrl}
+        this.currentImageIndex = 0;
+        this.originalImage = null; // Keep for backwards compatibility
+        this.isGalleryExpanded = false;
+        this.animationCycleCount = 0;
+        this.lastCycleNumber = -1;
+
         this.isColorMode = true;
         this.backgroundRemovalEnabled = false;
         this.backgroundImageEnabled = false;
-        this.processingTimeout = null; // Add debouncing for performance
-        
+        this.processingTimeout = null;
+
         // Motion animation state
         this.motionAnimationRunning = false;
         this.motionAnimationFrame = 0;
         this.motionBarOrder = [];
-        this.motionBarTotalFrames = 120; // Longer animation (4 seconds at 30fps)
+        this.motionBarTotalFrames = 120;
+        this.baseCycleDuration = 6000; // Base cycle duration in ms (6 seconds at 1.0x speed)
         this.motionAnimationRequestId = null;
         this.motionType = 'motion1'; // Current motion type
-        this.animationSpeed = 1.0; // Animation speed multiplier (0.5x to 3x)
-        this.motion2VisibleBars = []; // For motion 2 flickering
-        this.motion3ImpulsePhase = 0; // For motion 3 impulse waves
+        this.animationSpeed = 1.0; // Animation speed multiplier (0.5x to 10x)
         this.aspectRatio = 'original'; // Current aspect ratio setting
-        
+        this.animationStartTime = 0; // For time-based animation
+        this.lastWaveCycle = -1; // For motion 4 wave cycle tracking
+
         // Default settings for reset functionality
         this.defaultSettings = {
             pixelSize: 80,
@@ -35,169 +46,856 @@ class ImagePixelationTool {
             aspectRatio: 'original',
             primaryColor: '#ffffff'
         };
-        
+
         // Video recording state
         this.isRecording = false;
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.videoStream = null;
         this.isProcessingDownload = false;
-        
+
         // Background color state
         this.backgroundColorEnabled = false;
         this.backgroundColor = '#FFFFFF';
-        
+
         // Reverse mask state
         this.reverseMaskEnabled = false;
-        
+
+        // Initialize other event listeners (isolated from upload)
         this.initializeEventListeners();
-        this.updateSliderValues();
+        this.initializeGallerySystem();
+        this.safeUpdateSliderValues();
+    }
+
+    // ===========================================
+    // MULTI-IMAGE GALLERY SYSTEM
+    // ===========================================
+    initializeGallerySystem() {
+        // Gallery UI is now in HTML, just setup event listeners
+        this.setupGalleryEventListeners();
+    }
+
+    setupGalleryEventListeners() {
+        // Click on mini-viewer stack to toggle expand
+        const miniViewerStack = document.getElementById('miniViewerStack');
+        if (miniViewerStack) {
+            miniViewerStack.addEventListener('click', (e) => {
+                if (!e.target.classList.contains('thumb-delete-btn')) {
+                    this.toggleGalleryExpand();
+                }
+            });
+        }
+
+        // Close expanded view when clicking outside
+        document.addEventListener('click', (e) => {
+            const miniViewer = document.getElementById('miniViewer');
+            if (this.isGalleryExpanded && miniViewer && !miniViewer.contains(e.target)) {
+                this.closeGallery();
+            }
+        });
+    }
+
+    // Add image to the multi-image array
+    addImage(img) {
+        const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        // Create thumbnail
+        const thumbnailCanvas = document.createElement('canvas');
+        const thumbSize = 80;
+        thumbnailCanvas.width = thumbSize;
+        thumbnailCanvas.height = thumbSize;
+        const thumbCtx = thumbnailCanvas.getContext('2d');
+
+        // Draw image cropped to square
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+        thumbCtx.drawImage(img, sx, sy, minDim, minDim, 0, 0, thumbSize, thumbSize);
+
+        const thumbnailUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.8);
+
+        this.images.push({
+            img: img,
+            id: imageId,
+            thumbnailUrl: thumbnailUrl
+        });
+
+        // If this is the first image, set it as current (this will update views)
+        if (this.images.length === 1) {
+            this.setCurrentImage(0);
+        } else {
+            this.updateStackedView();
+            if (this.isGalleryExpanded) this.updateExpandedView();
+        }
+
+        console.log(`Image added. Total images: ${this.images.length}`);
+    }
+
+    // Remove image by index
+    removeImage(index) {
+        if (index < 0 || index >= this.images.length) return;
+
+        this.images.splice(index, 1);
+
+        // Adjust current index if needed
+        if (this.images.length === 0) {
+            this.currentImageIndex = 0;
+            this.originalImage = null;
+            this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            const dropZone = document.getElementById('dropZone');
+            if (dropZone) dropZone.classList.remove('has-image');
+        } else {
+            if (this.currentImageIndex >= this.images.length) {
+                this.currentImageIndex = this.images.length - 1;
+            }
+            this.setCurrentImage(this.currentImageIndex);
+        }
+
+        this.updateStackedView();
+        this.updateExpandedView();
+
+        console.log(`Image removed. Total images: ${this.images.length}`);
+    }
+
+    // Set current active image
+    setCurrentImage(index) {
+        if (index < 0 || index >= this.images.length) return;
+
+        this.currentImageIndex = index;
+        this.originalImage = this.images[index].img;
+        this.setupCanvas(this.originalImage);
+        this.processImage();
+
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) dropZone.classList.add('has-image');
+
+        this.updateStackedView();
+        this.updateExpandedView();
+    }
+
+    // Update stacked thumbnail view (mini-viewer)
+    updateStackedView() {
+        const container = document.getElementById('miniViewerStack');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (this.images.length === 0) {
+            container.style.display = 'none';
+            const miniViewer = document.getElementById('miniViewer');
+            if (miniViewer) {
+                miniViewer.style.display = 'none';
+                miniViewer.classList.remove('visible');
+            }
+            return;
+        }
+
+        // Hide stack when expanded gallery is open — openGallery sets display:none inline,
+        // but this method is called from many places and must not clobber that state.
+        container.style.display = this.isGalleryExpanded ? 'none' : 'block';
+        const miniViewer = document.getElementById('miniViewer');
+        if (miniViewer) {
+            miniViewer.style.display = 'block';
+            miniViewer.classList.add('visible');
+        }
+
+        // For single image: show only the current image (stack-0)
+        // For multiple images: show up to 3 stacked (stack-0, stack-1, stack-2)
+        const maxVisible = Math.min(3, this.images.length);
+
+        // Create thumbnails (reverse order so stack-0 renders last and appears on top)
+        for (let stackPosition = maxVisible - 1; stackPosition >= 0; stackPosition--) {
+            // For simplicity, just show first N images in order
+            const imageData = this.images[stackPosition];
+
+            const thumb = document.createElement('div');
+            thumb.className = 'stacked-thumb stack-' + stackPosition;
+
+            thumb.innerHTML = `
+                <img src="${imageData.thumbnailUrl}" alt="Image ${stackPosition + 1}">
+                ${stackPosition === 0 ? '<button class="thumb-delete-btn" data-index="0">×</button>' : ''}
+            `;
+
+            container.appendChild(thumb);
+        }
+
+        // Add image count badge if more than 1 image
+        if (this.images.length > 1) {
+            const badge = document.createElement('div');
+            badge.className = 'image-count-badge';
+            badge.textContent = this.images.length;
+            container.appendChild(badge);
+        }
+
+        // Add delete button listeners
+        container.querySelectorAll('.thumb-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.index);
+                this.removeImage(index);
+            });
+        });
+
+    }
+
+    // Update expanded horizontal gallery view
+    updateExpandedView() {
+        const expandedImages = document.getElementById('expandedImages');
+        if (!expandedImages) return;
+
+        expandedImages.innerHTML = '';
+
+        this.images.forEach((imageData, index) => {
+            const item = document.createElement('div');
+            item.className = 'expanded-thumb' + (index === this.currentImageIndex ? ' active' : '');
+            item.dataset.index = index;
+
+            item.innerHTML = `
+                <img src="${imageData.thumbnailUrl}" alt="Image ${index + 1}" draggable="false">
+                <button class="thumb-delete-btn" data-index="${index}">×</button>
+            `;
+
+            // Pointer-based drag — stopPropagation prevents document listener closing gallery
+            item.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('.thumb-delete-btn')) return;
+                e.stopPropagation();
+                this.onGalleryPointerDown(e, index, item);
+            });
+
+            // Click to select (tap without drag)
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!e.target.closest('.thumb-delete-btn') && !this._recentlyDragged) {
+                    this.setCurrentImage(index);
+                }
+            });
+
+            expandedImages.appendChild(item);
+        });
+
+        // Delete button listeners
+        expandedImages.querySelectorAll('.thumb-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt(btn.dataset.index);
+                this.removeImage(index);
+            });
+        });
+    }
+
+    // ── Pointer-based gallery drag (Instagram/CapCut style) ──────────────────
+
+    onGalleryPointerDown(e, index, element) {
+        // Cancel any leftover drag state from a previous interaction
+        if (this._galleryMoveHandler) {
+            document.removeEventListener('pointermove', this._galleryMoveHandler);
+            document.removeEventListener('pointerup', this._galleryUpHandler);
+            document.removeEventListener('pointercancel', this._galleryUpHandler);
+        }
+        if (this._galleryDragActive) this._cleanupGalleryDrag();
+
+        this._galleryDragIndex = index;
+        this._galleryDragElement = element;
+        this._galleryDragStartX = e.clientX;
+        this._galleryDragStartY = e.clientY;
+        this._galleryDragActive = false;
+        this._galleryDropIndex = undefined;
+
+        this._galleryMoveHandler = (ev) => this.onGalleryPointerMove(ev);
+        this._galleryUpHandler = (ev) => this.onGalleryPointerUp(ev);
+        document.addEventListener('pointermove', this._galleryMoveHandler, { passive: false });
+        document.addEventListener('pointerup', this._galleryUpHandler);
+        document.addEventListener('pointercancel', this._galleryUpHandler);
+    }
+
+    onGalleryPointerMove(e) {
+        e.preventDefault();
+        this._ptrX = e.clientX;
+        this._ptrY = e.clientY;
+
+        if (!this._galleryDragActive) {
+            const dist = Math.hypot(e.clientX - this._galleryDragStartX, e.clientY - this._galleryDragStartY);
+            if (dist < 8) return;
+            this._activateGalleryDrag(e);
+            return;
+        }
+
+        // Throttle DOM writes to one per animation frame
+        if (!this._rafPending) {
+            this._rafPending = true;
+            requestAnimationFrame(() => {
+                this._rafPending = false;
+                if (!this._galleryDragActive) return;
+
+                // Move clone via transform — no layout reflow
+                this._galleryClone.style.transform =
+                    `translate3d(${this._ptrX - this._galleryCloneHalfW}px,${this._ptrY - this._galleryCloneHalfH}px,0) scale(1.08)`;
+
+                // Only update card positions when the target slot changes
+                const newDrop = this._computeGalleryDrop(this._ptrX);
+                if (newDrop !== this._galleryDropIndex) {
+                    this._galleryDropIndex = newDrop;
+                    this._applyGalleryGap(newDrop);
+                }
+            });
+        }
+    }
+
+    _activateGalleryDrag(e) {
+        this._galleryDragActive = true;
+        const el = this._galleryDragElement;
+        const rect = el.getBoundingClientRect();
+        this._galleryCloneHalfW = rect.width / 2;
+        this._galleryCloneHalfH = rect.height / 2;
+
+        // Clone anchored at origin, moved entirely via transform (GPU composited, no reflow)
+        const clone = document.createElement('div');
+        clone.className = 'expanded-thumb gallery-drag-clone';
+        clone.style.cssText = [
+            'position:fixed',
+            'left:0',
+            'top:0',
+            `width:${rect.width}px`,
+            `height:${rect.height}px`,
+            `transform:translate3d(${e.clientX - rect.width / 2}px,${e.clientY - rect.height / 2}px,0) scale(1.08)`,
+            'z-index:9999',
+            'pointer-events:none',
+            'opacity:0.92',
+            'will-change:transform',
+            'box-shadow:0 10px 30px rgba(0,0,0,0.7)',
+            'border-color:#fff',
+        ].join(';');
+        clone.innerHTML = `<img src="${this.images[this._galleryDragIndex].thumbnailUrl}" alt="" draggable="false">`;
+        document.body.appendChild(clone);
+        this._galleryClone = clone;
+
+        // Remove source from flex flow completely — opacity:0 kept its slot, causing a
+        // permanent phantom gap AND allowing transforms to push cards on top of it.
+        el.classList.add('gallery-drag-source');
+        el.style.display = 'none';
+
+        const expandedImages = document.getElementById('expandedImages');
+        expandedImages?.classList.add('drag-in-progress');
+
+        // Cache neighbours after source is removed (layout has reflowed without it).
+        // offsetWidth forces the reflow synchronously so rects are correct.
+        this._dragThumbs = [...expandedImages.querySelectorAll('.expanded-thumb')]
+            .filter(t => t !== el);
+        // Shift amount = card width only. The flex gap already provides spacing between
+        // cards, so adding it again would create an oversized gap.
+        this._dragSlotW = this._dragThumbs[0]?.offsetWidth ?? 70;
+
+        // Snapshot base rects once — used by _computeGalleryDrop every frame so the
+        // drop target doesn't shift under the cursor as transforms are applied.
+        this._dragBaseRects = this._dragThumbs.map(t => {
+            const r = t.getBoundingClientRect();
+            return { cx: r.left + r.width / 2 };
+        });
+
+        this._rafPending = false;
+        this._ptrX = e.clientX;
+        this._ptrY = e.clientY;
+    }
+
+    _computeGalleryDrop(cursorX) {
+        // Use pre-snapshotted base centres — not live rects — so the insertion point
+        // doesn't move as neighbouring cards slide around during the drag.
+        const rects = this._dragBaseRects;
+        if (!rects) return 0;
+        for (let i = 0; i < rects.length; i++) {
+            if (cursorX < rects[i].cx) return i;
+        }
+        return rects.length;
+    }
+
+    _applyGalleryGap(dropIndex) {
+        const thumbs = this._dragThumbs;
+        if (!thumbs) return;
+        const shift = `translate3d(${this._dragSlotW}px,0,0)`;
+        thumbs.forEach((t, i) => {
+            t.style.transform = i >= dropIndex ? shift : '';
+        });
+    }
+
+    onGalleryPointerUp(e) {
+        document.removeEventListener('pointermove', this._galleryMoveHandler);
+        document.removeEventListener('pointerup', this._galleryUpHandler);
+        document.removeEventListener('pointercancel', this._galleryUpHandler);
+        this._galleryMoveHandler = null;
+        this._galleryUpHandler = null;
+
+        if (!this._galleryDragActive) {
+            // Plain tap — click handler already handles selection, nothing to do
+            this._galleryDragIndex = undefined;
+            this._galleryDragElement = null;
+            return;
+        }
+
+        if (this._galleryDropIndex !== undefined) {
+            const from = this._galleryDragIndex;
+            const to   = this._galleryDropIndex; // index in remaining N-1 cards
+
+            const moved = this.images.splice(from, 1)[0];
+            this.images.splice(to, 0, moved);
+
+            let ci = this.currentImageIndex;
+            if (from === ci) {
+                ci = to;
+            } else {
+                if (from < ci) ci--;
+                if (to <= ci) ci++;
+            }
+            this.currentImageIndex = ci;
+
+            this._recentlyDragged = true;
+            setTimeout(() => { this._recentlyDragged = false; }, 150);
+        }
+
+        this._cleanupGalleryDrag();
+    }
+
+    _cleanupGalleryDrag() {
+        if (this._galleryClone) { this._galleryClone.remove(); this._galleryClone = null; }
+        if (this._galleryDragElement) {
+            // Restore display before DOM rebuild so the element isn't briefly invisible
+            this._galleryDragElement.style.display = '';
+            this._galleryDragElement.classList.remove('gallery-drag-source');
+            this._galleryDragElement = null;
+        }
+        document.querySelectorAll('#expandedImages .expanded-thumb').forEach(t => {
+            t.style.transform = '';
+        });
+        document.getElementById('expandedImages')?.classList.remove('drag-in-progress');
+        this._galleryDragActive = false;
+        this._galleryDragIndex = undefined;
+        this._galleryDropIndex = undefined;
+        this._dragThumbs = null;
+        this._dragBaseRects = null;
+        this._dragSlotW = undefined;
+        this._rafPending = false;
+
+        this.updateStackedView();
+        this.updateExpandedView();
+    }
+
+    toggleGalleryExpand() {
+        if (this.isGalleryExpanded) {
+            this.closeGallery();
+        } else {
+            this.openGallery();
+        }
+    }
+
+    openGallery() {
+        if (this.images.length === 0) return;
+
+        this.isGalleryExpanded = true;
+        // Explicitly hide the stack — the CSS `.mini-viewer.expanded .mini-viewer-stack`
+        // rule is overridden by the inline display:block set in updateStackedView, so we
+        // must also set the inline style directly here.
+        const stack = document.getElementById('miniViewerStack');
+        if (stack) stack.style.display = 'none';
+
+        const expanded = document.getElementById('miniViewerExpanded');
+        if (expanded) {
+            expanded.style.display = 'flex';
+            this.updateExpandedView();
+        }
+        document.getElementById('miniViewer')?.classList.add('expanded');
+    }
+
+    closeGallery() {
+        this.isGalleryExpanded = false;
+        const expanded = document.getElementById('miniViewerExpanded');
+        if (expanded) expanded.style.display = 'none';
+
+        // Restore stack visibility
+        const stack = document.getElementById('miniViewerStack');
+        if (stack && this.images.length > 0) stack.style.display = 'block';
+
+        document.getElementById('miniViewer')?.classList.remove('expanded');
+    }
+
+    // Advance to next image in sequence (for animation)
+    advanceToNextImage() {
+        if (this.images.length <= 1) return false;
+
+        const nextIndex = (this.currentImageIndex + 1) % this.images.length;
+
+        // Reset animation state
+        this.animationStartTime = performance.now();
+        this.motionAnimationFrame = 0;
+        this.lastWaveCycle = -1;
+        this.lastCycleNumber = -1;
+        this._impulseCycle = -1;
+        this._glitchCycle = -1;
+        this._randomStartPhase = Math.random();
+        this._randomPeaks = Math.floor(Math.random() * 3) + 1;
+
+        this.currentImageIndex = nextIndex;
+        this.originalImage = this.images[nextIndex].img;
+
+        // Clear visible canvas immediately so the outgoing frame's pixels don't
+        // linger for even one rAF tick while setupCanvas/prepareMotionBarOrder run.
+        this.pixelCtx.clearRect(0, 0, this.pixelCanvas.width, this.pixelCanvas.height);
+
+        this.setupCanvas(this.originalImage); // draws raw image into this.ctx for sampling
+
+        if (this.motionAnimationRunning) {
+            // During animation: just prepare bar metadata and start with a clean canvas.
+            // Calling processImage() here would paint every bar at once, causing a
+            // one-frame full-image flash before the animation builds up from zero.
+            this.prepareMotionBarOrder();
+            this.clearCanvasBackground();
+        } else {
+            this.processImage();
+            this.prepareMotionBarOrder();
+        }
+
+        this.updateStackedView();
+
+        if (this.motionAnimationRunning) {
+            this.scheduleNextFrame();
+        }
+
+        return true;
+    }
+
+    // ===========================================
+    // CRITICAL: Isolated Upload System
+    // This is completely decoupled from other features
+    // ===========================================
+    initializeUploadSystem() {
+        try {
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const dropZone = document.getElementById('dropZone');
+            const mainContent = document.querySelector('.main-content');
+
+            if (!fileInput) {
+                console.error('CRITICAL: fileInput element not found');
+                return;
+            }
+
+            // Enable multiple file selection
+            fileInput.setAttribute('multiple', 'true');
+
+            // Upload button click - wrapped in try-catch
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', (e) => {
+                    try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        fileInput.click();
+                    } catch (err) {
+                        console.error('Upload button error:', err);
+                    }
+                });
+            }
+
+            // File input change - the core upload handler (now supports multiple)
+            fileInput.addEventListener('change', (e) => {
+                try {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                        for (let i = 0; i < files.length; i++) {
+                            this.safeHandleFileSelect(files[i]);
+                        }
+                    }
+                    // Reset file input so same files can be re-selected
+                    fileInput.value = '';
+                } catch (err) {
+                    console.error('File input change error:', err);
+                    alert('Error selecting file. Please try again.');
+                }
+            });
+
+            // Mobile upload - click on main content area
+            if (mainContent) {
+                mainContent.addEventListener('click', (e) => {
+                    try {
+                        const isMobile = window.innerWidth <= 768;
+                        // Only trigger if clicking on drop zone area and no images loaded
+                        if (isMobile && this.images.length === 0 && e.target.closest('#dropZone')) {
+                            fileInput.click();
+                        }
+                    } catch (err) {
+                        console.error('Mobile upload error:', err);
+                    }
+                });
+            }
+
+            // Drag and drop events (now supports multiple files)
+            if (dropZone) {
+                dropZone.addEventListener('dragover', (e) => {
+                    try {
+                        e.preventDefault();
+                        dropZone.classList.add('dragover');
+                    } catch (err) {
+                        console.error('Dragover error:', err);
+                    }
+                });
+
+                dropZone.addEventListener('dragleave', () => {
+                    try {
+                        dropZone.classList.remove('dragover');
+                    } catch (err) {
+                        console.error('Dragleave error:', err);
+                    }
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    try {
+                        e.preventDefault();
+                        dropZone.classList.remove('dragover');
+                        const files = e.dataTransfer && e.dataTransfer.files;
+                        if (files && files.length > 0) {
+                            for (let i = 0; i < files.length; i++) {
+                                if (this.isValidImageFile(files[i])) {
+                                    this.safeHandleFileSelect(files[i]);
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Drop error:', err);
+                        alert('Error processing dropped file. Please try again.');
+                    }
+                });
+            }
+
+            console.log('Upload system initialized successfully');
+        } catch (err) {
+            console.error('CRITICAL: Failed to initialize upload system:', err);
+        }
+    }
+
+    // Safe file handler with comprehensive error handling
+    safeHandleFileSelect(file) {
+        try {
+            if (!file) {
+                console.error('No file provided');
+                return;
+            }
+
+            if (!this.isValidImageFile(file)) {
+                alert('Please select a valid image file (PNG, JPG, or WebP)');
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onerror = (err) => {
+                console.error('FileReader error:', err);
+                alert('Error reading file. Please try again.');
+            };
+
+            reader.onload = (e) => {
+                try {
+                    const img = new Image();
+
+                    img.onerror = () => {
+                        console.error('Image load error');
+                        alert('Error loading image. Please try a different file.');
+                    };
+
+                    img.onload = () => {
+                        try {
+                            // Add to multi-image array instead of replacing
+                            this.addImage(img);
+
+                            console.log('Image loaded successfully:', img.width, 'x', img.height);
+                        } catch (err) {
+                            console.error('Error processing loaded image:', err);
+                            alert('Error processing image. Please try again.');
+                        }
+                    };
+
+                    img.src = e.target.result;
+                } catch (err) {
+                    console.error('Error in reader onload:', err);
+                    alert('Error processing file. Please try again.');
+                }
+            };
+
+            reader.readAsDataURL(file);
+        } catch (err) {
+            console.error('Error in safeHandleFileSelect:', err);
+            alert('Error handling file. Please try again.');
+        }
+    }
+
+    // Safe slider update that won't break other functionality
+    safeUpdateSliderValues() {
+        try {
+            const elements = {
+                sizeValue: document.getElementById('sizeValue'),
+                sizeSlider: document.getElementById('sizeSlider'),
+                thresholdValue: document.getElementById('thresholdValue'),
+                thresholdSlider: document.getElementById('thresholdSlider'),
+                stretchValue: document.getElementById('stretchValue'),
+                stretchSlider: document.getElementById('stretchSlider'),
+                sensitivityValue: document.getElementById('sensitivityValue'),
+                sensitivitySlider: document.getElementById('sensitivitySlider'),
+                opacityValue: document.getElementById('opacityValue'),
+                opacitySlider: document.getElementById('opacitySlider')
+            };
+
+            if (elements.sizeValue && elements.sizeSlider) {
+                elements.sizeValue.textContent = elements.sizeSlider.value;
+            }
+            if (elements.thresholdValue && elements.thresholdSlider) {
+                elements.thresholdValue.textContent = elements.thresholdSlider.value;
+            }
+            if (elements.stretchValue && elements.stretchSlider) {
+                elements.stretchValue.textContent = elements.stretchSlider.value.padStart(2, '0');
+            }
+            if (elements.sensitivityValue && elements.sensitivitySlider) {
+                elements.sensitivityValue.textContent = elements.sensitivitySlider.value;
+            }
+            if (elements.opacityValue && elements.opacitySlider) {
+                elements.opacityValue.textContent = elements.opacitySlider.value;
+            }
+        } catch (err) {
+            console.warn('Error updating slider values:', err);
+        }
     }
 
     initializeEventListeners() {
-        // File input and drag & drop
-        const fileInput = document.getElementById('fileInput');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const dropZone = document.getElementById('dropZone');
-
-        uploadBtn.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => this.handleFileSelect(e.target.files[0]));
-
-        // Mobile upload - click on main content area to upload
-        const mainContent = document.querySelector('.main-content');
-        const isMobile = () => window.innerWidth <= 768;
-        
-        mainContent.addEventListener('click', (e) => {
-            if (isMobile() && !this.originalImage) {
-                // Only trigger on mobile and when no image is loaded
-                fileInput.click();
-            }
-        });
-
-        // Drag and drop events
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && this.isValidImageFile(file)) {
-                this.handleFileSelect(file);
-            }
-        });
-
-        // Mode toggle buttons
-        document.getElementById('coloredBtn').addEventListener('click', () => this.setColorMode(true));
-        document.getElementById('bwBtn').addEventListener('click', () => this.setColorMode(false));
+        // File input and drag & drop - REMOVED (now in initializeUploadSystem)
 
         // Background removal toggle
-        document.getElementById('backgroundRemovalBtn').addEventListener('click', () => this.toggleBackgroundRemoval());
-        
+        this.safeAddEventListener('backgroundRemovalBtn', 'click', () => this.toggleBackgroundRemoval());
+
         // Background image toggle
-        document.getElementById('backgroundImageBtn').addEventListener('click', () => this.toggleBackgroundImage());
-        
+        this.safeAddEventListener('backgroundImageBtn', 'click', () => this.toggleBackgroundImage());
+
         // Sensitivity slider
-        document.getElementById('sensitivitySlider').addEventListener('input', (e) => {
-            document.getElementById('sensitivityValue').textContent = e.target.value;
+        this.safeAddEventListener('sensitivitySlider', 'input', (e) => {
+            const valueEl = document.getElementById('sensitivityValue');
+            if (valueEl) valueEl.textContent = e.target.value;
             this.processImage();
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
 
         // Opacity slider
-        document.getElementById('opacitySlider').addEventListener('input', (e) => {
-            document.getElementById('opacityValue').textContent = e.target.value;
+        this.safeAddEventListener('opacitySlider', 'input', (e) => {
+            const valueEl = document.getElementById('opacityValue');
+            if (valueEl) valueEl.textContent = e.target.value;
             if (this.backgroundImageEnabled) {
                 this.processImage();
             }
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
 
-        // Sliders with immediate live updates
-        document.getElementById('sizeSlider').addEventListener('input', (e) => {
-            document.getElementById('sizeValue').textContent = e.target.value;
-            this.processImage(); // Immediate processing for live updates
-            this.saveCurrentSettings(); // Save settings after change
+        // Size slider
+        this.safeAddEventListener('sizeSlider', 'input', (e) => {
+            const valueEl = document.getElementById('sizeValue');
+            if (valueEl) valueEl.textContent = e.target.value;
+            this.processImage();
+            this.saveCurrentSettings();
         });
 
-        document.getElementById('thresholdSlider').addEventListener('input', (e) => {
-            document.getElementById('thresholdValue').textContent = e.target.value;
-            this.processImage(); // Immediate processing for live updates
-            this.saveCurrentSettings(); // Save settings after change
+        // Threshold slider
+        this.safeAddEventListener('thresholdSlider', 'input', (e) => {
+            const valueEl = document.getElementById('thresholdValue');
+            if (valueEl) valueEl.textContent = e.target.value;
+            this.processImage();
+            this.saveCurrentSettings();
         });
 
-        document.getElementById('stretchSlider').addEventListener('input', (e) => {
-            const value = e.target.value.padStart(2, '0');
-            document.getElementById('stretchValue').textContent = value;
-            this.processImage(); // Immediate processing for live updates
-            this.saveCurrentSettings(); // Save settings after change
+        // Stretch slider
+        this.safeAddEventListener('stretchSlider', 'input', (e) => {
+            const valueEl = document.getElementById('stretchValue');
+            if (valueEl) valueEl.textContent = e.target.value.padStart(2, '0');
+            this.processImage();
+            this.saveCurrentSettings();
         });
 
         // Download buttons
-        document.getElementById('svgDownloadBtn').addEventListener('click', () => this.downloadSVG());
-        document.getElementById('pngDownloadBtn').addEventListener('click', () => this.downloadPNG());
-        
+        this.safeAddEventListener('pngDownloadBtn', 'click', () => this.downloadPNG());
+
         // Reset Settings button
-        document.getElementById('resetSettingsBtn').addEventListener('click', () => this.resetSettings());
-        
+        this.safeAddEventListener('resetSettingsBtn', 'click', () => this.resetSettings());
+
         // Start/Stop Animation button
-        document.getElementById('startStopMotionBtn').addEventListener('click', () => this.toggleMotionAnimation());
+        this.safeAddEventListener('startStopMotionBtn', 'click', () => this.toggleMotionAnimation());
+
         // Motion type selector
-        document.getElementById('motionTypeSelect').addEventListener('change', (e) => {
+        this.safeAddEventListener('motionTypeSelect', 'change', (e) => {
             this.setMotionType(e.target.value);
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
-        
+
         // Aspect ratio selector
-        document.getElementById('aspectRatioSelect').addEventListener('change', (e) => {
+        this.safeAddEventListener('aspectRatioSelect', 'change', (e) => {
             this.setAspectRatio(e.target.value);
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
-        
+
         // Speed slider for animation
-        document.getElementById('speedSlider').addEventListener('input', (e) => {
+        this.safeAddEventListener('speedSlider', 'input', (e) => {
             this.animationSpeed = parseFloat(e.target.value);
-            document.getElementById('speedValue').textContent = `${this.animationSpeed.toFixed(1)}x`;
-            this.saveCurrentSettings(); // Save settings after change
+            const valueEl = document.getElementById('speedValue');
+            if (valueEl) valueEl.textContent = `${this.animationSpeed.toFixed(1)}x`;
+            this.saveCurrentSettings();
         });
-        
+
         // Download Video button
-        document.getElementById('videoDownloadBtn').addEventListener('click', () => this.downloadMotionVideo());
-        
+        this.safeAddEventListener('videoDownloadBtn', 'click', () => this.downloadMotionVideo());
+
         // Background color controls
-        document.getElementById('backgroundColorBtn').addEventListener('click', () => this.toggleBackgroundColor());
-        document.getElementById('hexColorInput').addEventListener('input', (e) => {
+        this.safeAddEventListener('backgroundColorBtn', 'click', () => this.toggleBackgroundColor());
+        this.safeAddEventListener('hexColorInput', 'input', (e) => {
             this.updateBackgroundColor(e.target.value);
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
-        document.getElementById('hexColorInput').addEventListener('change', (e) => {
+        this.safeAddEventListener('hexColorInput', 'change', (e) => {
             this.updateBackgroundColor(e.target.value);
-            this.saveCurrentSettings(); // Save settings after change
+            this.saveCurrentSettings();
         });
-        
+
         // Color wheel controls
-        document.getElementById('colorPreview').addEventListener('click', () => this.toggleColorWheel());
-        document.getElementById('closeColorWheel').addEventListener('click', () => this.closeColorWheel());
-        
-        // Close color wheel when clicking outside (but not on color wheel itself)
+        this.safeAddEventListener('colorPreview', 'click', () => this.toggleColorWheel());
+        this.safeAddEventListener('closeColorWheel', 'click', () => this.closeColorWheel());
+
+        // Close color wheel when clicking outside
         document.addEventListener('click', (e) => {
-            const colorWheel = document.getElementById('colorWheelPopup');
-            const colorPreview = document.getElementById('colorPreview');
-            if (colorWheel.style.display === 'block' && 
-                !colorWheel.contains(e.target) && 
-                !colorPreview.contains(e.target)) {
-                this.closeColorWheel();
+            try {
+                const colorWheel = document.getElementById('colorWheelPopup');
+                const colorPreview = document.getElementById('colorPreview');
+                if (colorWheel && colorPreview &&
+                    colorWheel.style.display === 'block' &&
+                    !colorWheel.contains(e.target) &&
+                    !colorPreview.contains(e.target)) {
+                    this.closeColorWheel();
+                }
+            } catch (err) {
+                console.warn('Color wheel close error:', err);
             }
         });
-        
+
         // Reverse mask control
-        document.getElementById('reverseMaskBtn').addEventListener('click', () => this.toggleReverseMask());
+        this.safeAddEventListener('reverseMaskBtn', 'click', () => this.toggleReverseMask());
+    }
+
+    // Helper method to safely add event listeners
+    safeAddEventListener(elementId, event, handler) {
+        try {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.addEventListener(event, (e) => {
+                    try {
+                        handler(e);
+                    } catch (err) {
+                        console.warn(`Error in ${elementId} ${event} handler:`, err);
+                    }
+                });
+            } else {
+                console.warn(`Element not found: ${elementId}`);
+            }
+        } catch (err) {
+            console.warn(`Error adding listener to ${elementId}:`, err);
+        }
     }
 
     toggleMotionAnimation() {
@@ -211,9 +909,8 @@ class ImagePixelationTool {
     setMotionType(motionType) {
         this.motionType = motionType;
         
-        // Reset motion-specific states
-        this.motion2VisibleBars = [];
-        this.motion3ImpulsePhase = 0;
+        // Reset impulse origins so next cycle picks new positions
+        this._impulseCycle = -1;
         
         // If animation is running, restart it with new motion type
         if (this.motionAnimationRunning) {
@@ -241,6 +938,13 @@ class ImagePixelationTool {
         document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? 'STOP' : 'STOP ANIMATION';
         this.prepareMotionBarOrder();
         this.motionAnimationFrame = 0;
+        this.animationStartTime = performance.now();
+        this._impulseCycle = -1;
+        this._glitchCycle = -1;
+        this.lastWaveCycle = -1;
+        this.lastCycleNumber = -1;
+        this._randomStartPhase = Math.random();
+        this._randomPeaks = Math.floor(Math.random() * 3) + 1;
         this.runMotionAnimation();
     }
 
@@ -251,14 +955,9 @@ class ImagePixelationTool {
             cancelAnimationFrame(this.motionAnimationRequestId);
             this.motionAnimationRequestId = null;
         }
-        
-        // If recording, stop the recording when animation completes
-        if (this.isRecording && !this.isProcessingDownload) {
-            setTimeout(() => {
-                this.stopVideoRecording();
-            }, 500); // Small delay to ensure last frames are captured
-        }
-        
+
+        // Note: Recording continues independently, user must click video button to stop
+
         // Optionally, redraw the final image
         this.processImage();
     }
@@ -273,26 +972,26 @@ class ImagePixelationTool {
         const desiredBarHeight = baseBarHeight + extraHeight;
         const width = this.canvas.width;
         const height = this.canvas.height;
-        
-        // Calculate actual bar height to ensure even distribution
-        const numBarsVertically = Math.floor(height / desiredBarHeight);
-        const totalBarHeight = numBarsVertically > 0 ? Math.floor(height / numBarsVertically) : desiredBarHeight;
-        
+
+        // Calculate exact bar counts so bars tile perfectly to all edges (same as pixelateImage)
+        const numBarsHorizontally = Math.max(1, Math.round(width / pixelSize));
+        const numBarsVertically = Math.max(1, Math.round(height / desiredBarHeight));
+
         const imageData = this.ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
-        
+
         // Get background removal settings
-        const sensitivity = this.isColorMode && this.backgroundRemovalEnabled ? 
+        const sensitivity = this.isColorMode && this.backgroundRemovalEnabled ?
             parseInt(document.getElementById('sensitivitySlider').value) : 0;
-        
+
         // If background removal is enabled, detect dominant colors
         let dominantColors = [];
         if (this.isColorMode && this.backgroundRemovalEnabled) {
             const corners = [
-                {x: 0, y: 0}, {x: width-1, y: 0}, 
+                {x: 0, y: 0}, {x: width-1, y: 0},
                 {x: 0, y: height-1}, {x: width-1, y: height-1}
             ];
-            
+
             for (let corner of corners) {
                 const index = (corner.y * width + corner.x) * 4;
                 dominantColors.push({
@@ -302,17 +1001,21 @@ class ImagePixelationTool {
                 });
             }
         }
-        
+
         const bars = [];
-        
+
         // Only add bars that would actually be visible in the final image
-        for (let x = 0; x < width; x += pixelSize) {
-            for (let y = 0; y < height; y += totalBarHeight) {
+        for (let col = 0; col < numBarsHorizontally; col++) {
+            const x = Math.round(col * width / numBarsHorizontally);
+            const actualBarWidth = Math.round((col + 1) * width / numBarsHorizontally) - x;
+            for (let row = 0; row < numBarsVertically; row++) {
+                const y = Math.round(row * height / numBarsVertically);
+                const actualBarHeight = Math.round((row + 1) * height / numBarsVertically) - y;
                 // Sample a point in this area (same logic as in pixelateImage)
-                const sampleX = Math.min(x + Math.floor(pixelSize / 2), width - 1);
-                const sampleY = Math.min(y + Math.floor(totalBarHeight / 2), height - 1);
+                const sampleX = Math.min(x + Math.floor(actualBarWidth / 2), width - 1);
+                const sampleY = Math.min(y + Math.floor(actualBarHeight / 2), height - 1);
                 const index = (sampleY * width + sampleX) * 4;
-                
+
                 let r = data[index] || 0;
                 let g = data[index + 1] || 0;
                 let b = data[index + 2] || 0;
@@ -326,7 +1029,7 @@ class ImagePixelationTool {
                     if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors)) {
                         continue; // Skip background colors - don't add to animation
                     }
-                    
+
                     r = r > threshold * 2.55 ? r : 0;
                     g = g > threshold * 2.55 ? g : 0;
                     b = b > threshold * 2.55 ? b : 0;
@@ -340,8 +1043,8 @@ class ImagePixelationTool {
                         r: r,
                         g: g,
                         b: b,
-                        width: pixelSize,
-                        height: totalBarHeight
+                        width: actualBarWidth,
+                        height: actualBarHeight
                     });
                 }
             }
@@ -365,14 +1068,20 @@ class ImagePixelationTool {
             case 'motion1':
                 this.runMotion1Animation();
                 break;
-            case 'motion2':
-                this.runMotion2Animation();
-                break;
             case 'motion3':
                 this.runMotion3Animation();
                 break;
             case 'motion4':
                 this.runMotion4Animation();
+                break;
+            case 'motion5':
+                this.runMotion5Animation();
+                break;
+            case 'motion6':
+                this.runMotion6Animation();
+                break;
+            case 'motion7':
+                this.runMotion7Animation();
                 break;
             default:
                 this.runMotion1Animation();
@@ -380,262 +1089,296 @@ class ImagePixelationTool {
     }
 
     runMotion1Animation() {
-        // BUILD UP animation - builds up then builds down in a continuous loop
-        // Clear canvas for animation
-        this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Fill background with custom color if enabled
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-        
-        // Draw original image as background if enabled
-        if (this.backgroundImageEnabled && this.originalImage) {
-            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-            this.pixelCtx.globalAlpha = opacity;
-            this.drawOriginalImageToContext(this.pixelCtx, this.canvas.width, this.canvas.height);
-            this.pixelCtx.globalAlpha = 1.0; // Reset opacity for bars
-        }
-        
-        // Create looping build-up and build-down effect
-        const halfCycle = this.motionBarTotalFrames / this.animationSpeed; // Time for one direction
-        const fullCycle = halfCycle * 2; // Complete up + down cycle
-        const currentFrame = this.motionAnimationFrame % fullCycle; // Loop the animation
-        
+        this.clearCanvasBackground();
+
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycleNumber = Math.floor(elapsedTime / cycleDuration);
+        if (this.checkCycleAdvance(currentCycleNumber)) return;
+
+        const halfCycleDuration = cycleDuration / 2;
+        const timeInCycle = elapsedTime % cycleDuration;
+
         let visibleBarCount;
-        if (currentFrame < halfCycle) {
-            // BUILD UP phase: 0 to all bars
-            const progress = currentFrame / halfCycle;
-            visibleBarCount = Math.floor(progress * this.motionBarOrder.length);
+        if (timeInCycle < halfCycleDuration) {
+            visibleBarCount = Math.floor((timeInCycle / halfCycleDuration) * this.motionBarOrder.length);
         } else {
-            // BUILD DOWN phase: all bars to 0
-            const downProgress = (currentFrame - halfCycle) / halfCycle;
+            const downProgress = (timeInCycle - halfCycleDuration) / halfCycleDuration;
             visibleBarCount = Math.floor((1 - downProgress) * this.motionBarOrder.length);
         }
-        
-        // Draw only the bars that should be visible
-        for (let i = 0; i < visibleBarCount; i++) {
-            const bar = this.motionBarOrder[i];
-            this.drawBar(bar);
-        }
-        
-        this.updateDisplay();
-        this.motionAnimationFrame++;
-        
-        // Loop continuously - never stop
-        this.scheduleNextFrame();
-    }
 
-    runMotion2Animation() {
-        // FLICKER animation - continuous gentle flickering of visible bars
-        if (this.motionAnimationFrame === 0) {
-            // Initialize: show all bars that were prepared (these are the visible ones from settings)
-            this.motion2VisibleBars = [...this.motionBarOrder];
+        for (let i = 0; i < visibleBarCount; i++) {
+            this.drawBar(this.motionBarOrder[i]);
         }
-        
-        // Clear canvas
-        this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Fill background with custom color if enabled
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-        
-        // Draw original image as background if enabled
-        if (this.backgroundImageEnabled && this.originalImage) {
-            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-            this.pixelCtx.globalAlpha = opacity;
-            this.drawOriginalImageToContext(this.pixelCtx);
-            this.pixelCtx.globalAlpha = 1.0;
-        }
-        
-        // Speed-controlled flickering - adjust frame interval based on speed
-        const flickerInterval = Math.max(1, Math.round(5 / this.animationSpeed)); // Slower base interval
-        if (this.motionAnimationFrame % flickerInterval === 0) { // Flicker based on speed
-            const toggleCount = Math.floor(this.motionBarOrder.length * (0.02 + Math.random() * 0.03)); // 2-5% per flicker
-            for (let i = 0; i < toggleCount; i++) {
-                const randomIndex = Math.floor(Math.random() * this.motionBarOrder.length);
-                const bar = this.motionBarOrder[randomIndex];
-                
-                // Toggle visibility
-                const visibleIndex = this.motion2VisibleBars.findIndex(b => 
-                    b.x === bar.x && b.y === bar.y);
-                
-                if (visibleIndex >= 0) {
-                    // Remove from visible (hide)
-                    this.motion2VisibleBars.splice(visibleIndex, 1);
-                } else {
-                    // Add to visible (show)
-                    this.motion2VisibleBars.push(bar);
-                }
-            }
-        }
-        
-        // Draw visible bars
-        for (const bar of this.motion2VisibleBars) {
-            this.drawBar(bar);
-        }
-        
+
         this.updateDisplay();
         this.motionAnimationFrame++;
-        
-        // Loop continuously - never stop
         this.scheduleNextFrame();
     }
 
     runMotion3Animation() {
-        // IMPULSE wave animation - continuous loop from center to edge and back
-        // Clear canvas for animation
-        this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Fill background with custom color if enabled
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.clearCanvasBackground();
+
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycleNumber = Math.floor(elapsedTime / cycleDuration);
+        if (this.checkCycleAdvance(currentCycleNumber)) return;
+
+        // Re-roll origins once per cycle — seeded LCG so positions are stable within
+        // a cycle but change every cycle.
+        if (this._impulseCycle !== currentCycleNumber) {
+            this._impulseCycle = currentCycleNumber;
+            let s = (currentCycleNumber * 1664525 + 1013904223) >>> 0;
+            const rng = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
+            const w = this.canvas.width, h = this.canvas.height;
+            this._impulseOrigins = [
+                { x: w * (0.15 + rng() * 0.7), y: h * (0.15 + rng() * 0.7), offset: 0 },
+                { x: w * (0.15 + rng() * 0.7), y: h * (0.15 + rng() * 0.7), offset: 0.38 + rng() * 0.18 },
+            ];
+            this._impulseMaxR = Math.sqrt(w * w + h * h);
         }
-        
-        // Draw original image as background if enabled
-        if (this.backgroundImageEnabled && this.originalImage) {
-            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-            this.pixelCtx.globalAlpha = opacity;
-            this.drawOriginalImageToContext(this.pixelCtx);
-            this.pixelCtx.globalAlpha = 1.0;
-        }
-        
-        // Create speed-controlled wave effect - cycles every 80 frames / speed
-        const waveLength = 80 / this.animationSpeed;
-        const wavePhase = (this.motionAnimationFrame % waveLength) / waveLength;
-        
-        // Wave position using sine wave for smooth back-and-forth motion
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        const maxDistance = Math.sqrt(centerX ** 2 + centerY ** 2);
-        
-        // Create back-and-forth wave: 0 -> 1 -> 0 using sine wave
-        const sineWave = Math.sin(wavePhase * Math.PI * 2); // Full sine cycle
-        const waveRadius = maxDistance * (0.5 + 0.5 * sineWave); // Maps -1,1 to 0,1
-        const waveWidth = maxDistance * 0.12; // Slightly narrower for better performance
-        
-        // Batch render bars to avoid too many draw calls
-        let drawnBars = 0;
-        const maxBarsPerFrame = 350; // Slightly more bars for fuller effect
-        
+
+        const phase = (elapsedTime % cycleDuration) / cycleDuration; // 0 → 1
+        const maxR = this._impulseMaxR;
+        const coreW = maxR * 0.13; // solid ring width — deterministic, no per-frame randomness
+
         for (const bar of this.motionBarOrder) {
-            if (drawnBars >= maxBarsPerFrame) break;
-            
-            const distance = Math.sqrt((bar.x - centerX) ** 2 + (bar.y - centerY) ** 2);
-            
-            // Show bars that are within the wave front (ring effect)
-            if (distance <= waveRadius + waveWidth && distance >= waveRadius - waveWidth) {
-                this.drawBar(bar);
-                drawnBars++;
+            let draw = false;
+            for (const o of this._impulseOrigins) {
+                const p = (phase + o.offset) % 1;
+                // Ease-out expansion: ring starts fast and slows toward edges
+                const r    = maxR * (1 - Math.pow(1 - p, 1.6));
+                const dist = Math.sqrt((bar.x - o.x) ** 2 + (bar.y - o.y) ** 2);
+                if (Math.abs(dist - r) <= coreW) { draw = true; break; }
             }
+            if (draw) this.drawBar(bar);
         }
-        
+
         this.updateDisplay();
         this.motionAnimationFrame++;
-        
-        // Run continuously - never stop, just keep looping
         this.scheduleNextFrame();
     }
 
     runMotion4Animation() {
-        // WAVE animation - loops continuously with random direction each cycle
-        const loopFrames = (this.motionBarTotalFrames * 1.8) / this.animationSpeed;
-        const currentCycle = Math.floor(this.motionAnimationFrame / loopFrames);
-        const frameInCycle = this.motionAnimationFrame % loopFrames;
-        
-        // Choose new random direction for each cycle
-        if (frameInCycle === 0) {
-            this.waveDirection = Math.floor(Math.random() * 4); // 0=left, 1=right, 2=top, 3=bottom
-            this.sortBarsForWave();
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycle = Math.floor(elapsedTime / cycleDuration);
+        const timeInCycle = elapsedTime % cycleDuration;
+
+        if (this.checkCycleAdvance(currentCycle)) return;
+
+        if (this.lastWaveCycle !== currentCycle) {
+            this.lastWaveCycle = currentCycle;
+            this.waveDirection = Math.floor(Math.random() * 4);
+            this.sortBarsBy(this.waveDirection);
         }
-        
-        // Clear canvas for animation
-        this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Fill background with custom color if enabled
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-        
-        // Draw original image as background if enabled
-        if (this.backgroundImageEnabled && this.originalImage) {
-            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-            this.pixelCtx.globalAlpha = opacity;
-            this.drawOriginalImageToContext(this.pixelCtx);
-            this.pixelCtx.globalAlpha = 1.0;
-        }
-        
-        // Calculate progress within current cycle
-        const rawProgress = frameInCycle / loopFrames;
-        
-        // Apply smooth easing
-        const progress = rawProgress < 0.5 
-            ? 2 * rawProgress * rawProgress 
+
+        this.clearCanvasBackground();
+
+        const rawProgress = timeInCycle / cycleDuration;
+        const progress = rawProgress < 0.5
+            ? 2 * rawProgress * rawProgress
             : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
-        
+
         const totalBars = this.motionBarOrder.length;
-        
+
         if (progress <= 0.5) {
-            // APPEAR phase: bars appear following wave direction (0 to all bars)
-            const appearProgress = progress * 2; // 0 to 1
-            const barsToShow = Math.floor(totalBars * appearProgress);
-            
-            for (let i = 0; i < barsToShow; i++) {
-                this.drawBar(this.motionBarOrder[i]);
-            }
+            const barsToShow = Math.floor(totalBars * progress * 2);
+            for (let i = 0; i < barsToShow; i++) this.drawBar(this.motionBarOrder[i]);
         } else {
-            // DISAPPEAR phase: bars disappear following same wave direction
-            const disappearProgress = (progress - 0.5) * 2; // 0 to 1
-            const barsToHide = Math.floor(totalBars * disappearProgress);
-            const startIndex = barsToHide; // Start hiding from beginning
-            const endIndex = totalBars; // Show remaining bars
-            
-            for (let i = startIndex; i < endIndex; i++) {
-                this.drawBar(this.motionBarOrder[i]);
-            }
+            const barsToHide = Math.floor(totalBars * (progress - 0.5) * 2);
+            for (let i = barsToHide; i < totalBars; i++) this.drawBar(this.motionBarOrder[i]);
         }
-        
+
         this.updateDisplay();
         this.motionAnimationFrame++;
-        
-        // Loop continuously - never stop
         this.scheduleNextFrame();
     }
 
-    sortBarsForWave() {
-        // Sort bars based on wave direction for organic progression
-        this.motionBarOrder.sort((a, b) => {
-            switch (this.waveDirection) {
-                case 0: // Left to right
-                    return a.x - b.x;
-                case 1: // Right to left
-                    return b.x - a.x;
-                case 2: // Top to bottom
-                    return a.y - b.y;
-                case 3: // Bottom to top
-                    return b.y - a.y;
-                default:
-                    return 0;
+    runMotion5Animation() {
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycle = Math.floor(elapsedTime / cycleDuration);
+        const timeInCycle = elapsedTime % cycleDuration;
+
+        if (this.checkCycleAdvance(currentCycle)) return;
+
+        if (this.fadeDirection === undefined) {
+            this.fadeDirection = Math.floor(Math.random() * 4);
+            this.sortBarsBy(this.fadeDirection);
+        }
+
+        this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (this.originalImage) {
+            this.pixelCtx.globalAlpha = 1.0;
+            this.pixelCtx.globalCompositeOperation = 'source-over';
+            this.drawOriginalImageToContext(this.pixelCtx);
+        }
+
+        // Step 2: Create a temporary canvas for the mask
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = this.canvas.width;
+        maskCanvas.height = this.canvas.height;
+        const maskCtx = maskCanvas.getContext('2d');
+
+        // Fill mask with hex color overlay
+        const overlayColor = this.backgroundColorEnabled ? this.backgroundColor : '#000000';
+        maskCtx.fillStyle = overlayColor;
+        maskCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Step 3: Cut out holes in the mask where bars should be visible
+        const rawProgress = timeInCycle / cycleDuration;
+        const totalBars = this.motionBarOrder.length;
+
+        maskCtx.globalCompositeOperation = 'destination-out';
+
+        // Two phase animation: fade in, then fade out
+        if (rawProgress <= 0.5) {
+            // FADE IN phase: bars become windows (reveal image)
+            const fadeInProgress = rawProgress * 2; // 0 to 1
+            
+            for (let i = 0; i < totalBars; i++) {
+                const bar = this.motionBarOrder[i];
+                const barPosition = i / totalBars;
+                
+                // Calculate opacity: how much of the hex overlay to remove
+                let cutoutOpacity;
+                if (barPosition <= fadeInProgress) {
+                    // Wave has passed - fully visible (fully cut out)
+                    cutoutOpacity = 1.0;
+                } else if (barPosition <= fadeInProgress + 0.2) {
+                    // In the wave zone - transitioning
+                    const transitionProgress = (barPosition - fadeInProgress) / 0.2;
+                    cutoutOpacity = 1.0 - transitionProgress; // Fade from 1.0 to 0
+                } else {
+                    // Wave hasn't reached yet - not visible (skip)
+                    continue;
+                }
+                
+                // Cut out the overlay to reveal the image
+                maskCtx.globalAlpha = cutoutOpacity;
+                maskCtx.fillStyle = '#FFFFFF'; // Color doesn't matter for destination-out
+                maskCtx.fillRect(bar.x, bar.y, bar.width, bar.height);
             }
-        });
+        } else {
+            // FADE OUT phase: bars close back up (hide image, show hex color)
+            const fadeOutProgress = (rawProgress - 0.5) * 2; // 0 to 1
+            
+            for (let i = 0; i < totalBars; i++) {
+                const bar = this.motionBarOrder[i];
+                const barPosition = i / totalBars;
+                
+                // Calculate opacity: how much of the hex overlay to remove
+                let cutoutOpacity;
+                if (barPosition <= fadeOutProgress) {
+                    // Wave has passed - closed (skip, hex color stays)
+                    continue;
+                } else if (barPosition <= fadeOutProgress + 0.2) {
+                    // In the wave zone - transitioning
+                    const transitionProgress = (barPosition - fadeOutProgress) / 0.2;
+                    cutoutOpacity = transitionProgress; // Fade from 0 to 1.0
+                } else {
+                    // Wave hasn't reached yet - fully visible
+                    cutoutOpacity = 1.0;
+                }
+                
+                // Cut out the overlay to reveal the image
+                maskCtx.globalAlpha = cutoutOpacity;
+                maskCtx.fillStyle = '#FFFFFF';
+                maskCtx.fillRect(bar.x, bar.y, bar.width, bar.height);
+            }
+        }
+
+        // Step 4: Draw the mask on top of the original image
+        this.pixelCtx.globalAlpha = 1.0;
+        this.pixelCtx.globalCompositeOperation = 'source-over';
+        this.pixelCtx.drawImage(maskCanvas, 0, 0);
+
+        this.updateDisplay();
+        this.motionAnimationFrame++;
+        this.scheduleNextFrame();
+    }
+
+    runMotion6Animation() {
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycle = Math.floor(elapsedTime / cycleDuration);
+
+        if (this.checkCycleAdvance(currentCycle)) return;
+
+        // Reshuffle once per cycle using LCG + Fisher-Yates
+        // (sort-with-sin breaks at seed=0 since sin(0)=0 for every term)
+        if (this._glitchCycle !== currentCycle) {
+            this._glitchCycle = currentCycle;
+            this._glitchBars = [...this.motionBarOrder];
+            let s = (currentCycle * 1664525 + 1013904223) >>> 0;
+            const rng = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
+            for (let i = this._glitchBars.length - 1; i > 0; i--) {
+                const j = Math.floor(rng() * (i + 1));
+                [this._glitchBars[i], this._glitchBars[j]] = [this._glitchBars[j], this._glitchBars[i]];
+            }
+        }
+
+        this.clearCanvasBackground();
+        const total = this._glitchBars.length;
+        if (total === 0) { this.scheduleNextFrame(); return; }
+
+        const rawProgress = (elapsedTime % cycleDuration) / cycleDuration;
+
+        if (rawProgress < 0.5) {
+            const target = Math.floor(total * rawProgress * 2);
+            for (let i = 0; i < target; i++) this.drawBar(this._glitchBars[i]);
+            for (let i = target; i < Math.min(target + 8, total); i++) {
+                if (Math.random() > 0.6) this.drawBar(this._glitchBars[i]);
+            }
+        } else {
+            const hidden = Math.floor(total * (rawProgress - 0.5) * 2);
+            for (let i = hidden; i < total; i++) this.drawBar(this._glitchBars[i]);
+            for (let i = Math.max(0, hidden - 8); i < hidden; i++) {
+                if (Math.random() > 0.7) this.drawBar(this._glitchBars[i]);
+            }
+        }
+
+        this.updateDisplay();
+        this.motionAnimationFrame++;
+        this.scheduleNextFrame();
+    }
+
+    runMotion7Animation() {
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycle = Math.floor(elapsedTime / cycleDuration);
+
+        if (this.checkCycleAdvance(currentCycle)) return;
+
+        this.clearCanvasBackground();
+        const total = this.motionBarOrder.length;
+        if (total === 0) { this.scheduleNextFrame(); return; }
+
+        // Phase starts at a random offset each run so no two starts look the same.
+        // _randomPeaks (1–3) controls how many pulses fire per cycle.
+        const phase = ((elapsedTime % cycleDuration) / cycleDuration + this._randomStartPhase) % 1;
+        const density = Math.pow(Math.sin(phase * Math.PI * this._randomPeaks), 2);
+
+        for (const bar of this.motionBarOrder) {
+            if (Math.random() < density) this.drawBar(bar);
+        }
+
+        this.updateDisplay();
+        this.motionAnimationFrame++;
+        this.scheduleNextFrame();
     }
 
     drawBar(bar) {
         if (this.reverseMaskEnabled && this.originalImage) {
-            // Reverse mask mode: draw original image portion instead of colored bar
             this.pixelCtx.save();
             this.pixelCtx.beginPath();
             this.pixelCtx.rect(bar.x, bar.y, bar.width, bar.height);
             this.pixelCtx.clip();
-            this.drawOriginalImageToContext(this.pixelCtx, this.canvas.width, this.canvas.height);
+            this.drawOriginalImageToContext(this.pixelCtx);
             this.pixelCtx.restore();
         } else {
-            // Normal mode: draw colored bar
             this.pixelCtx.fillStyle = `rgb(${bar.r},${bar.g},${bar.b})`;
             this.pixelCtx.fillRect(bar.x, bar.y, bar.width, bar.height);
         }
@@ -669,13 +1412,53 @@ class ImagePixelationTool {
     }
 
     scheduleNextFrame() {
-        // Apply speed multiplier - lower values = slower animation
-        const baseDelay = this.isRecording ? 50 : 100; // Base delays
-        const adjustedDelay = Math.max(16, baseDelay / this.animationSpeed); // Min 16ms for smooth animation
-        
-        setTimeout(() => {
-            this.motionAnimationRequestId = requestAnimationFrame(() => this.runMotionAnimation());
-        }, adjustedDelay);
+        this.motionAnimationRequestId = requestAnimationFrame(() => this.runMotionAnimation());
+    }
+
+    clearCanvasBackground() {
+        const { width, height } = this.canvas;
+        this.pixelCtx.clearRect(0, 0, width, height);
+        if (this.backgroundColorEnabled) {
+            this.pixelCtx.fillStyle = this.backgroundColor;
+            this.pixelCtx.fillRect(0, 0, width, height);
+        }
+        if (this.backgroundImageEnabled && this.originalImage) {
+            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
+            this.pixelCtx.globalAlpha = opacity;
+            this.drawOriginalImageToContext(this.pixelCtx);
+            this.pixelCtx.globalAlpha = 1.0;
+        }
+    }
+
+    checkCycleAdvance(currentCycle) {
+        if (this.images.length > 1 && currentCycle > this.lastCycleNumber) {
+            this.lastCycleNumber = currentCycle;
+            if (currentCycle > 0) {
+                this.advanceToNextImage();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    sortBarsBy(direction) {
+        this.motionBarOrder.sort((a, b) => {
+            switch (direction) {
+                case 0: return a.x - b.x;
+                case 1: return b.x - a.x;
+                case 2: return a.y - b.y;
+                case 3: return b.y - a.y;
+                default: return 0;
+            }
+        });
+    }
+
+    updateToggleBtn(enabled, btnId, desktopLabel, cardId = null) {
+        const btn = document.getElementById(btnId);
+        const isMobile = window.innerWidth <= 768;
+        btn.textContent = isMobile ? (enabled ? 'ON' : 'OFF') : `${desktopLabel}: ${enabled ? 'ON' : 'OFF'}`;
+        btn.classList.toggle('active', enabled);
+        if (cardId) document.getElementById(cardId).style.display = enabled ? 'block' : 'none';
     }
 
     // --- Video Download Implementation ---
@@ -692,14 +1475,31 @@ class ImagePixelationTool {
         }
     }
 
+    detectVideoFormat() {
+        const candidates = [
+            { mimeType: 'video/webm;codecs=vp9', bps: 8000000 },
+            { mimeType: 'video/webm;codecs=vp8', bps: 6000000 },
+            { mimeType: 'video/webm',             bps: 5000000 },
+            { mimeType: 'video/mp4;codecs=h264',  bps: 10000000 },
+            { mimeType: 'video/mp4',              bps: 10000000 },
+        ];
+        for (const c of candidates) {
+            if (MediaRecorder.isTypeSupported(c.mimeType)) {
+                return { mimeType: c.mimeType, videoBitsPerSecond: c.bps };
+            }
+        }
+        return null;
+    }
+
     async startVideoRecording() {
         try {
-            // Prevent multiple recordings
-            if (this.isRecording) {
+            if (this.isRecording) return;
+
+            if (typeof MediaRecorder === 'undefined') {
+                alert('Video recording is not supported in this browser.\nPlease use Chrome, Firefox, or Safari 14.1+.');
                 return;
             }
 
-            // Create a high-resolution canvas for video recording using original dimensions
             const finalWidth = this.pixelCanvas.width;
             const finalHeight = this.pixelCanvas.height;
 
@@ -708,60 +1508,18 @@ class ImagePixelationTool {
             this.videoCanvas.height = finalHeight;
             this.videoCtx = this.videoCanvas.getContext('2d');
 
-            // Get canvas stream with higher frame rate from the video canvas
-            this.videoStream = this.videoCanvas.captureStream(60); // 60 FPS for smoother video
-            
-            // Get user's preferred format
-            const formatSelect = document.getElementById('videoFormatSelect');
-            const preferredFormat = formatSelect ? formatSelect.value : 'mp4'; // Default to MP4
-            
-            // Set format based on user selection
-            let options;
-            
-            if (preferredFormat === 'mp4') {
-                // User wants MP4
-                if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
-                    options = {
-                        mimeType: 'video/mp4;codecs=h264',
-                        videoBitsPerSecond: 10000000 // 10Mbps for high quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                    options = {
-                        mimeType: 'video/mp4',
-                        videoBitsPerSecond: 10000000
-                    };
-                } else {
-                    throw new Error('MP4 format is not supported by your browser. Please select WebM instead.');
-                }
-            } else if (preferredFormat === 'webm') {
-                // User wants WebM
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-                    options = {
-                        mimeType: 'video/webm;codecs=vp9',
-                        videoBitsPerSecond: 8000000 // 8Mbps for high quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-                    options = {
-                        mimeType: 'video/webm;codecs=vp8',
-                        videoBitsPerSecond: 6000000 // 6Mbps for good quality
-                    };
-                } else if (MediaRecorder.isTypeSupported('video/webm')) {
-                    options = {
-                        mimeType: 'video/webm',
-                        videoBitsPerSecond: 5000000 // 5Mbps for decent quality
-                    };
-                } else {
-                    throw new Error('WebM format is not supported by your browser. Please select MP4 instead.');
-                }
-            } else {
-                // Fallback to MP4 if somehow an invalid format is selected
-                options = {
-                    mimeType: 'video/mp4',
-                    videoBitsPerSecond: 10000000
-                };
+            if (typeof this.videoCanvas.captureStream !== 'function') {
+                alert('Canvas video capture is not supported in this browser.\nPlease use Chrome, Firefox, or Safari 14.1+.');
+                return;
             }
 
-            console.log('Using codec:', options.mimeType);
+            this.videoStream = this.videoCanvas.captureStream(30);
+
+            const options = this.detectVideoFormat();
+            if (!options) {
+                alert('No supported video format found in this browser.\nPlease try Chrome or Firefox.');
+                return;
+            }
 
             this.mediaRecorder = new MediaRecorder(this.videoStream, options);
             this.recordedChunks = [];
@@ -848,72 +1606,29 @@ class ImagePixelationTool {
         console.log('Starting video download with', this.recordedChunks.length, 'chunks...');
 
         try {
-            // Calculate total size for debugging
             const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
-            console.log('Total video size:', totalSize, 'bytes');
+            if (totalSize === 0) throw new Error('Video data is empty');
 
-            if (totalSize === 0) {
-                throw new Error('Video data is empty');
-            }
-
-            // Determine the mime type from the MediaRecorder
-            let mimeType = 'video/webm';
-            if (this.mediaRecorder && this.mediaRecorder.mimeType) {
-                mimeType = this.mediaRecorder.mimeType;
-            }
-
-            // Create blob from recorded chunks
+            const mimeType = (this.mediaRecorder && this.mediaRecorder.mimeType) || 'video/webm';
+            const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const blob = new Blob(this.recordedChunks, { type: mimeType });
-            console.log('Created blob with type:', mimeType, 'and size:', blob.size);
-            
-            // Determine file extension and format name
-            let extension = 'webm';
-            let formatName = 'WebM';
-            
-            if (mimeType.includes('mp4')) {
-                extension = 'mp4';
-                formatName = 'MP4';
-            } else if (mimeType.includes('webm')) {
-                extension = 'webm';
-                formatName = 'WebM';
-            }
-            
-            // Create download link
+            const filename = `pixelation-animation-${Date.now()}.${extension}`;
+
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `pixelation-animation-${Date.now()}.${extension}`;
-            
-            // Add some attributes to ensure download works
+            a.download = filename;
             a.style.display = 'none';
-            a.setAttribute('download', a.download);
-            
-            // Trigger download
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            
-            // Clean up URL after a delay
-            setTimeout(() => {
-                URL.revokeObjectURL(url);
-            }, 1000);
-            
-            // Reset state BEFORE showing alert to prevent any race conditions
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+
             this.resetVideoState();
-            
-            // Show success message with format-specific advice
-            let playbackAdvice = '';
-            if (extension === 'mp4') {
-                playbackAdvice = 'This MP4 file should play in most video players and browsers.';
-            } else {
-                playbackAdvice = 'If the WebM video doesn\'t play, try using VLC Media Player or Chrome browser.';
-            }
-            
-            alert(`Video download started! The animation has been saved as a ${formatName} file.\n\nFile: ${a.download}\nSize: ${(blob.size / 1024 / 1024).toFixed(2)} MB\nFormat: ${formatName} (${mimeType})\n\n${playbackAdvice}`);
-            
+            alert(`Video saved!\n\nFile: ${filename}\nSize: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
+
         } catch (error) {
-            console.error('Error downloading video:', error);
-            alert('Failed to download video. Error: ' + error.message + '\n\nPlease try again or use a different browser.');
+            alert('Failed to download video: ' + error.message);
             this.resetVideoState();
         }
     }
@@ -944,21 +1659,14 @@ class ImagePixelationTool {
         console.log('Video state reset complete');
     }
 
-    updateSliderValues() {
-        document.getElementById('sizeValue').textContent = document.getElementById('sizeSlider').value;
-        document.getElementById('thresholdValue').textContent = document.getElementById('thresholdSlider').value;
-        const stretchValue = document.getElementById('stretchSlider').value.padStart(2, '0');
-        document.getElementById('stretchValue').textContent = stretchValue;
-        document.getElementById('sensitivityValue').textContent = document.getElementById('sensitivitySlider').value;
-        document.getElementById('opacityValue').textContent = document.getElementById('opacitySlider').value;
-        
-        // Initialize background section visibility (show for colored mode, hide for b&w)
-        document.getElementById('backgroundSection').style.display = this.isColorMode ? 'flex' : 'none';
-    }
-
     isValidImageFile(file) {
-        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-        return validTypes.includes(file.type);
+        try {
+            const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+            return file && validTypes.includes(file.type);
+        } catch (err) {
+            console.warn('Error validating file:', err);
+            return false;
+        }
     }
 
     saveCurrentSettings() {
@@ -969,7 +1677,7 @@ class ImagePixelationTool {
             sensitivity: parseInt(document.getElementById('sensitivitySlider').value),
             opacity: parseInt(document.getElementById('opacitySlider').value),
             motionType: document.getElementById('motionTypeSelect').value,
-            speed: parseInt(document.getElementById('speedSlider').value),
+            speed: parseFloat(document.getElementById('speedSlider').value),
             aspectRatio: document.getElementById('aspectRatioSelect').value,
             primaryColor: document.getElementById('hexColorInput').value
         };
@@ -1002,11 +1710,13 @@ class ImagePixelationTool {
                 document.getElementById('opacityValue').textContent = settings.opacity || this.defaultSettings.opacity;
                 document.querySelector('#speedValue').textContent = `${(settings.speed || this.defaultSettings.speed).toFixed(1)}x`;
                 
-                // Apply aspect ratio if it's not original
-                if (settings.aspectRatio && settings.aspectRatio !== 'original') {
-                    this.setAspectRatio(settings.aspectRatio);
-                }
-                
+                // Sync JS state from saved values
+                this.motionType = settings.motionType || this.defaultSettings.motionType;
+                this.animationSpeed = parseFloat(settings.speed) || this.defaultSettings.speed;
+
+                // Apply aspect ratio
+                this.setAspectRatio(settings.aspectRatio || this.defaultSettings.aspectRatio);
+
                 // Update background color and visual elements
                 this.updateBackgroundColor(settings.primaryColor || this.defaultSettings.primaryColor);
                 
@@ -1065,9 +1775,13 @@ class ImagePixelationTool {
         document.getElementById('opacityValue').textContent = this.defaultSettings.opacity;
         document.querySelector('#speedValue').textContent = `${this.defaultSettings.speed.toFixed(1)}x`;
         
+        // Sync JS state back to defaults
+        this.motionType = this.defaultSettings.motionType;
+        this.animationSpeed = this.defaultSettings.speed;
+
         // Reset aspect ratio to original
         this.setAspectRatio(this.defaultSettings.aspectRatio);
-        
+
         // Update background color and visual elements
         this.updateBackgroundColor(this.defaultSettings.primaryColor);
         
@@ -1078,30 +1792,6 @@ class ImagePixelationTool {
         if (this.originalImage) {
             this.processImage();
         }
-    }
-
-    handleFileSelect(file) {
-        if (!file || !this.isValidImageFile(file)) {
-            alert('Please select a valid image file (PNG, JPG, or WebP)');
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                this.originalImage = img;
-                this.setupCanvas(img);
-                
-                // Load saved settings before processing the image
-                this.loadSavedSettings();
-                
-                this.processImage();
-                document.getElementById('dropZone').classList.add('has-image');
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
     }
 
     setupCanvas(img) {
@@ -1179,8 +1869,6 @@ class ImagePixelationTool {
             );
         }
         
-        // Store the image data for SVG export
-        this.currentImageData = this.ctx.getImageData(0, 0, width, height);
     }
 
     // Helper method to draw original image with proper aspect ratio handling
@@ -1233,106 +1921,31 @@ class ImagePixelationTool {
         }
     }
 
-    setColorMode(isColor) {
-        this.isColorMode = isColor;
-        
-        // Update button states
-        document.getElementById('coloredBtn').classList.toggle('active', isColor);
-        document.getElementById('bwBtn').classList.toggle('active', !isColor);
-        
-        // Show/hide background removal section (only for colored mode)
-        const backgroundSection = document.getElementById('backgroundSection');
-        backgroundSection.style.display = isColor ? 'flex' : 'none';
-        
-        if (this.originalImage) {
-            this.processImage();
-        }
-    }
-
     toggleBackgroundRemoval() {
         this.backgroundRemovalEnabled = !this.backgroundRemovalEnabled;
-        const btn = document.getElementById('backgroundRemovalBtn');
-        const sensitivityCard = document.getElementById('sensitivityCard');
-        
-        if (this.backgroundRemovalEnabled) {
-            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'REMOVE BACK: ON';
-            btn.classList.add('active');
-            sensitivityCard.style.display = 'block';
-        } else {
-            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'REMOVE BACK: OFF';
-            btn.classList.remove('active');
-            sensitivityCard.style.display = 'none';
-        }
-        
-        if (this.originalImage) {
-            this.processImage();
-        }
+        this.updateToggleBtn(this.backgroundRemovalEnabled, 'backgroundRemovalBtn', 'REMOVE BACK', 'sensitivityCard');
+        if (this.originalImage) this.processImage();
     }
 
     toggleBackgroundImage() {
         this.backgroundImageEnabled = !this.backgroundImageEnabled;
-        const btn = document.getElementById('backgroundImageBtn');
-        const opacityCard = document.getElementById('opacityCard');
-        
-        if (this.backgroundImageEnabled) {
-            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'SHOW IMAGE: ON';
-            btn.classList.add('active');
-            opacityCard.style.display = 'block';
-        } else {
-            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'SHOW IMAGE: OFF';
-            btn.classList.remove('active');
-            opacityCard.style.display = 'none';
-        }
-        
-        if (this.originalImage) {
-            this.processImage();
-        }
+        this.updateToggleBtn(this.backgroundImageEnabled, 'backgroundImageBtn', 'SHOW IMAGE', 'opacityCard');
+        if (this.originalImage) this.processImage();
     }
 
     toggleBackgroundColor() {
         this.backgroundColorEnabled = !this.backgroundColorEnabled;
-        const btn = document.getElementById('backgroundColorBtn');
-        const colorCard = document.getElementById('colorCard');
-        
-        if (this.backgroundColorEnabled) {
-            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'BACK COLOR: ON';
-            btn.classList.add('active');
-            colorCard.style.display = 'block';
-        } else {
-            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'BACK COLOR: OFF';
-            btn.classList.remove('active');
-            colorCard.style.display = 'none';
-        }
-        
-        if (this.originalImage) {
-            this.processImage();
-        }
+        this.updateToggleBtn(this.backgroundColorEnabled, 'backgroundColorBtn', 'BACK COLOR', 'colorCard');
+        if (this.originalImage) this.processImage();
     }
 
     updateBackgroundColor(hexValue) {
-        // Validate hex color format
-        if (hexValue.startsWith('#') && hexValue.length === 7) {
-            const isValidHex = /^#[0-9A-F]{6}$/i.test(hexValue);
-            if (isValidHex) {
-                this.backgroundColor = hexValue;
-                document.getElementById('hexColorInput').value = hexValue; // Update hex input live
-                document.getElementById('colorPreview').style.backgroundColor = hexValue;
-                
-                if (this.backgroundColorEnabled && this.originalImage) {
-                    this.processImage();
-                }
-            }
-        } else if (hexValue.length === 6 && /^[0-9A-F]{6}$/i.test(hexValue)) {
-            // Handle case where user didn't include #
-            const fullHex = '#' + hexValue;
-            this.backgroundColor = fullHex;
-            document.getElementById('hexColorInput').value = fullHex;
-            document.getElementById('colorPreview').style.backgroundColor = fullHex;
-            
-            if (this.backgroundColorEnabled && this.originalImage) {
-                this.processImage();
-            }
-        }
+        const hex = hexValue.startsWith('#') ? hexValue : '#' + hexValue;
+        if (!/^#[0-9A-F]{6}$/i.test(hex)) return;
+        this.backgroundColor = hex;
+        document.getElementById('hexColorInput').value = hex;
+        document.getElementById('colorPreview').style.backgroundColor = hex;
+        if (this.backgroundColorEnabled && this.originalImage) this.processImage();
     }
 
     toggleColorWheel() {
@@ -1552,16 +2165,8 @@ class ImagePixelationTool {
         const canvas = document.getElementById('colorWheelCanvas');
         const rect = canvas.getBoundingClientRect();
         
-        let x, y;
-        if (isGlobalEvent) {
-            // For global mouse events, calculate relative to canvas
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
-        } else {
-            // For canvas-local events
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
-        }
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         
         const centerX = this.wheelCenter.x;
         const centerY = this.wheelCenter.y;
@@ -1677,19 +2282,8 @@ class ImagePixelationTool {
 
     toggleReverseMask() {
         this.reverseMaskEnabled = !this.reverseMaskEnabled;
-        const btn = document.getElementById('reverseMaskBtn');
-        
-        if (this.reverseMaskEnabled) {
-            btn.textContent = window.innerWidth <= 768 ? 'ON' : 'MASK: ON';
-            btn.classList.add('active');
-        } else {
-            btn.textContent = window.innerWidth <= 768 ? 'OFF' : 'MASK: OFF';
-            btn.classList.remove('active');
-        }
-        
-        if (this.originalImage) {
-            this.processImage();
-        }
+        this.updateToggleBtn(this.reverseMaskEnabled, 'reverseMaskBtn', 'MASK');
+        if (this.originalImage) this.processImage();
     }
 
     processImage() {
@@ -1737,46 +2331,31 @@ class ImagePixelationTool {
         const imageData = this.ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
         
-        // Clear the canvas first
-        this.pixelCtx.clearRect(0, 0, width, height);
-        
-        // Fill background with custom color if enabled
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, width, height);
-        }
-        
-        // Draw original image as background if enabled
-        if (this.backgroundImageEnabled && this.originalImage) {
-            const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-            this.pixelCtx.globalAlpha = opacity;
-            this.drawOriginalImageToContext(this.pixelCtx);
-            this.pixelCtx.globalAlpha = 1.0; // Reset opacity for bars
-        }
+        this.clearCanvasBackground();
         
         // NEW APPROACH: Create vertical bars by sampling horizontally and drawing tall rectangles
         const barWidth = pixelSize; // Width of each vertical bar
         const baseBarHeight = pixelSize * 3; // Base height (always taller than width)
         const extraHeight = Math.floor(stretchFactor * 2); // Additional height based on stretch factor
         const desiredBarHeight = baseBarHeight + extraHeight;
-        
-        // Calculate actual bar height to ensure even distribution
-        const numBarsVertically = Math.floor(height / desiredBarHeight);
-        const totalBarHeight = numBarsVertically > 0 ? Math.floor(height / numBarsVertically) : desiredBarHeight;
-        
+
+        // Calculate exact bar counts so bars tile perfectly to all edges
+        const numBarsHorizontally = Math.max(1, Math.round(width / barWidth));
+        const numBarsVertically = Math.max(1, Math.round(height / desiredBarHeight));
+
         // Get background removal settings
-        const sensitivity = this.isColorMode && this.backgroundRemovalEnabled ? 
+        const sensitivity = this.isColorMode && this.backgroundRemovalEnabled ?
             parseInt(document.getElementById('sensitivitySlider').value) : 0;
-        
+
         // If background removal is enabled, detect dominant colors (simplified approach)
         let dominantColors = [];
         if (this.isColorMode && this.backgroundRemovalEnabled) {
             // Sample corner pixels to detect likely background colors
             const corners = [
-                {x: 0, y: 0}, {x: width-1, y: 0}, 
+                {x: 0, y: 0}, {x: width-1, y: 0},
                 {x: 0, y: height-1}, {x: width-1, y: height-1}
             ];
-            
+
             for (let corner of corners) {
                 const index = (corner.y * width + corner.x) * 4;
                 dominantColors.push({
@@ -1786,15 +2365,19 @@ class ImagePixelationTool {
                 });
             }
         }
-        
-        // Draw vertical bars across the image
-        for (let x = 0; x < width; x += barWidth) {
-            for (let y = 0; y < height; y += totalBarHeight) {
+
+        // Draw vertical bars across the image using proportional grid — no partial/bleeding bars
+        for (let col = 0; col < numBarsHorizontally; col++) {
+            const x = Math.round(col * width / numBarsHorizontally);
+            const actualBarWidth = Math.round((col + 1) * width / numBarsHorizontally) - x;
+            for (let row = 0; row < numBarsVertically; row++) {
+                const y = Math.round(row * height / numBarsVertically);
+                const actualBarHeight = Math.round((row + 1) * height / numBarsVertically) - y;
                 // Sample a point in this area
-                const sampleX = Math.min(x + Math.floor(barWidth / 2), width - 1);
-                const sampleY = Math.min(y + Math.floor(totalBarHeight / 2), height - 1);
+                const sampleX = Math.min(x + Math.floor(actualBarWidth / 2), width - 1);
+                const sampleY = Math.min(y + Math.floor(actualBarHeight / 2), height - 1);
                 const index = (sampleY * width + sampleX) * 4;
-                
+
                 let r = data[index] || 0;
                 let g = data[index + 1] || 0;
                 let b = data[index + 2] || 0;
@@ -1808,7 +2391,7 @@ class ImagePixelationTool {
                     if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors)) {
                         continue; // Skip background colors
                     }
-                    
+
                     r = r > threshold * 2.55 ? r : 0;
                     g = g > threshold * 2.55 ? g : 0;
                     b = b > threshold * 2.55 ? b : 0;
@@ -1822,149 +2405,20 @@ class ImagePixelationTool {
                     // Reverse mask mode: draw original image portion instead of colored bar
                     this.pixelCtx.save();
                     this.pixelCtx.beginPath();
-                    this.pixelCtx.rect(x, y, barWidth, totalBarHeight);
+                    this.pixelCtx.rect(x, y, actualBarWidth, actualBarHeight);
                     this.pixelCtx.clip();
                     this.drawOriginalImageToContext(this.pixelCtx);
                     this.pixelCtx.restore();
                 } else {
                     // Normal mode: draw colored bar
                     this.pixelCtx.fillStyle = `rgb(${r},${g},${b})`;
-                    this.pixelCtx.fillRect(x, y, barWidth, totalBarHeight);
+                    this.pixelCtx.fillRect(x, y, actualBarWidth, actualBarHeight);
                 }
             }
         }
         
         this.pixelCanvas.style.display = 'block';
         this.canvas.style.display = 'block';
-    }
-
-    downloadSVG() {
-        if (!this.currentImageData) {
-            alert('Please upload an image first');
-            return;
-        }
-
-        try {
-            const { width, height } = this.canvas;
-            const imageData = this.currentImageData;
-            const data = imageData.data;
-            
-            // Get values directly from DOM elements
-            const pixelSize = parseInt(document.getElementById('sizeSlider').value);
-            const threshold = parseInt(document.getElementById('thresholdSlider').value);
-            const stretchFactor = parseInt(document.getElementById('stretchSlider').value);
-            const sensitivity = this.isColorMode && this.backgroundRemovalEnabled ? 
-                parseInt(document.getElementById('sensitivitySlider').value) : 0;
-
-            // Use the same NEW METHOD as in pixelateImage
-            const barWidth = pixelSize;
-            const baseBarHeight = pixelSize * 3;
-            const extraHeight = Math.floor(stretchFactor * 2);
-            const desiredBarHeight = baseBarHeight + extraHeight;
-
-            // Calculate actual bar height to ensure even distribution
-            const numBarsVertically = Math.floor(height / desiredBarHeight);
-            const totalBarHeight = numBarsVertically > 0 ? Math.floor(height / numBarsVertically) : desiredBarHeight;
-
-            // Detect dominant colors for background removal (same as pixelateImage)
-            let dominantColors = [];
-            if (this.isColorMode && this.backgroundRemovalEnabled) {
-                const corners = [
-                    {x: 0, y: 0}, {x: width-1, y: 0}, 
-                    {x: 0, y: height-1}, {x: width-1, y: height-1}
-                ];
-                
-                for (let corner of corners) {
-                    const index = (corner.y * width + corner.x) * 4;
-                    dominantColors.push({
-                        r: data[index],
-                        g: data[index + 1],
-                        b: data[index + 2]
-                    });
-                }
-            }
-
-            // Build SVG content
-            let svgRects = '';
-            
-            // Create vertical bars using the same algorithm as pixelateImage
-            for (let x = 0; x < width; x += barWidth) {
-                for (let y = 0; y < height; y += totalBarHeight) {
-                    const sampleX = Math.min(x + Math.floor(barWidth / 2), width - 1);
-                    const sampleY = Math.min(y + Math.floor(totalBarHeight / 2), height - 1);
-                    const index = (sampleY * width + sampleX) * 4;
-                    
-                    let r = data[index] || 0;
-                    let g = data[index + 1] || 0;
-                    let b = data[index + 2] || 0;
-
-                    if (!this.isColorMode) {
-                        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-                        // INVERT: black becomes white, white becomes black
-                        r = g = b = gray > threshold * 2.55 ? 0 : 255;
-                    } else {
-                        // In colored mode, check for background removal
-                        if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors)) {
-                            continue; // Skip background colors
-                        }
-                        
-                        r = r > threshold * 2.55 ? r : 0;
-                        g = g > threshold * 2.55 ? g : 0;
-                        b = b > threshold * 2.55 ? b : 0;
-                    }
-
-                    // Skip black/transparent pixels
-                    if (r === 0 && g === 0 && b === 0) continue;
-
-                    svgRects += `<rect x="${x}" y="${y}" width="${barWidth}" height="${totalBarHeight}" fill="rgb(${r},${g},${b})"/>\n`;
-                }
-            }
-
-            // Complete SVG content with optional background
-            let backgroundElement = '';
-            if (this.backgroundImageEnabled && this.originalImage) {
-                const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
-                // Convert image to base64 for embedding in SVG
-                const backgroundCanvas = document.createElement('canvas');
-                const backgroundCtx = backgroundCanvas.getContext('2d');
-                backgroundCanvas.width = width;
-                backgroundCanvas.height = height;
-                backgroundCtx.drawImage(this.originalImage, 0, 0, width, height);
-                const base64Image = backgroundCanvas.toDataURL('image/png');
-                
-                backgroundElement = `<image href="${base64Image}" x="0" y="0" width="${width}" height="${height}" opacity="${opacity}"/>\n`;
-            }
-
-            const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-${backgroundElement}${svgRects}</svg>`;
-
-            // Alternative download method using data URL
-            const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
-            
-            // Create and trigger download
-            const link = document.createElement('a');
-            link.href = dataUrl;
-            link.download = 'pixelated-image.svg';
-            
-            // Ensure link is visible and part of DOM for some browsers
-            link.style.position = 'absolute';
-            link.style.left = '-9999px';
-            document.body.appendChild(link);
-            
-            // Trigger download
-            link.click();
-            
-            // Clean up
-            setTimeout(() => {
-                document.body.removeChild(link);
-            }, 100);
-            
-            alert('SVG download should start now!');
-            
-        } catch (error) {
-            alert('SVG download failed: ' + error.message);
-        }
     }
 
     downloadPNG() {

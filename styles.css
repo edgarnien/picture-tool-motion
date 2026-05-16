@@ -2,6 +2,8 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    transition: none !important;
+    animation: none !important;
 }
 
 body {
@@ -43,7 +45,6 @@ body {
     color: #ffffff;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
     font-size: 11px;
     border-radius: 8px;
     flex: 1;
@@ -75,7 +76,6 @@ body {
     color: #ffffff;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
     font-size: 11px;
     border-radius: 8px;
 }
@@ -110,7 +110,6 @@ body {
     color: #ffffff;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
     font-size: 11px;
     border-radius: 8px;
 }
@@ -166,7 +165,6 @@ body {
     font-family: monospace;
     text-transform: uppercase;
     outline: none;
-    transition: all 0.3s ease;
 }
 
 .hex-input:focus {
@@ -181,7 +179,6 @@ body {
     border-radius: 8px;
     background-color: #ffffff;
     cursor: pointer;
-    transition: all 0.3s ease;
 }
 
 .color-preview:hover {
@@ -221,7 +218,6 @@ body {
     text-align: center;
     border-radius: 8px;
     text-transform: uppercase;
-    transition: all 0.3s ease;
     width: 100%;
     box-shadow: 0 0 8px rgba(204, 204, 204, 0.3);
 }
@@ -337,7 +333,6 @@ button.compact-btn,
     font-size: 11px !important;
     text-align: center !important;
     border-radius: 8px !important;
-    transition: all 0.3s ease !important;
     text-transform: uppercase !important;
 }
 
@@ -358,7 +353,6 @@ button.compact-btn:hover,
     padding: 10px;
     width: 100%;
     margin-bottom: 5px;
-    transition: all 0.3s ease;
 }
 
 .compact-btn.animation-btn:hover {
@@ -491,7 +485,6 @@ select.compact-select option,
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
 }
@@ -520,18 +513,11 @@ select.compact-select option,
     display: none;
 }
 
-/* Original input image - small in corner */
-.drop-zone.has-image #canvas {
-    display: block !important;
-    max-width: 180px;
-    max-height: 140px;
-    object-fit: contain;
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    border: 2px solid #666;
-    border-radius: 8px;
-    z-index: 10;
+/* Original input image - ALWAYS hidden (using mini-viewer instead) */
+.drop-zone.has-image #canvas,
+#canvas {
+    display: none !important;
+    visibility: hidden !important;
 }
 
 /* Processed/pixelated image - fill frame while maintaining proportions */
@@ -539,8 +525,8 @@ select.compact-select option,
     display: block !important;
     width: auto;
     height: auto;
-    max-width: calc(100% - 220px); /* Leave space for corner image + padding */
-    max-height: calc(100% - 40px);  /* Leave space for top/bottom padding */
+    max-width: calc(100% - 40px); /* Full width minus padding */
+    max-height: calc(100% - 40px); /* Full height minus padding */
     object-fit: contain;
     position: absolute;
     top: 50%;
@@ -600,7 +586,6 @@ select.compact-select option,
     color: #ffffff;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
     font-size: 11px;
     border-radius: 8px;
     flex: 1;
@@ -730,8 +715,7 @@ select.compact-select option,
         border-radius: 10px;
         font-size: 12px;
         font-weight: 500;
-        transition: all 0.2s ease;
-    }
+        }
     
     .mobile-card button:active,
     .mobile-card select:active {
@@ -823,8 +807,7 @@ select.compact-select option,
         border-radius: 6px;
         font-size: 12px;
         font-weight: 500;
-        transition: all 0.2s ease;
-        padding: 8px 12px; /* Better internal spacing */
+            padding: 8px 12px; /* Better internal spacing */
     }
     
     /* Upload button as mobile card */
@@ -1042,7 +1025,6 @@ select.compact-select option,
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s;
 }
 
 .close-btn:hover {
@@ -1123,7 +1105,6 @@ select.compact-select option,
     font-size: 11px;
     text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.3s ease;
 }
 
 /* RESET SETTINGS button - red glow/stroke on hover */
@@ -1175,4 +1156,289 @@ select.compact-select option,
     border: 2px solid #bbbbbb;
     color: #ffffff;
     box-shadow: 0 0 6px rgba(187, 187, 187, 0.3);
+}
+
+/* ===========================================
+   MULTI-IMAGE MINI-VIEWER STYLES
+   =========================================== */
+
+/* Mini-viewer container (top-right corner) */
+.mini-viewer {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    display: none; /* Hidden until images loaded */
+}
+
+.mini-viewer.visible {
+    display: block;
+}
+
+/* ===========================================
+   STATE 1 & 2: STACKED VIEW (default, collapsed)
+   =========================================== */
+.mini-viewer-stack {
+    position: relative;
+    width: 80px;
+    height: 110px;
+    cursor: pointer;
+}
+
+/* Individual thumbnail card */
+.stacked-thumb {
+    position: absolute;
+    width: 80px;
+    height: 110px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid #fff;
+    background-color: #3a3a3a;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.stacked-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Stacking positions - front card on top */
+.stacked-thumb.stack-0 {
+    z-index: 3;
+    top: 0;
+    left: 0;
+}
+
+.stacked-thumb.stack-1 {
+    z-index: 2;
+    top: 6px;
+    left: 6px;
+    transform: rotate(3deg);
+}
+
+.stacked-thumb.stack-2 {
+    z-index: 1;
+    top: 12px;
+    left: 12px;
+    transform: rotate(6deg);
+}
+
+.mini-viewer-stack:hover .stacked-thumb.stack-0 {
+    transform: scale(1.02);
+}
+
+/* Delete button - INSIDE the card */
+.thumb-delete-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background-color: rgba(60, 60, 60, 0.9);
+    color: white;
+    border: 2px solid #fff;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    padding-bottom: 2px; /* Compensate for font baseline */
+    z-index: 10;
+}
+
+.thumb-delete-btn:hover {
+    background-color: #dc3545;
+    transform: scale(1.1);
+}
+
+/* Image count badge */
+.image-count-badge {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    background-color: #4285f4;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+/* ===========================================
+   STATE 3: EXPANDED VIEW (horizontal gallery)
+   =========================================== */
+.mini-viewer.expanded .mini-viewer-stack {
+    display: none;
+}
+
+.mini-viewer-expanded {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 15px;
+    background-color: rgba(30, 30, 30, 0.95);
+    border-radius: 14px;
+    padding: 12px;
+    max-width: 450px;
+    max-height: 85vh;
+    overflow-x: auto;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 2px solid #444;
+    touch-action: none; /* prevents scroll hijacking during pointer drag */
+}
+
+#expandedImages {
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.mini-viewer.expanded .mini-viewer-expanded {
+    display: flex;
+}
+
+.mini-viewer-expanded::-webkit-scrollbar {
+    height: 6px;
+}
+
+.mini-viewer-expanded::-webkit-scrollbar-track {
+    background: #222;
+    border-radius: 3px;
+}
+
+.mini-viewer-expanded::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 3px;
+}
+
+/* Individual card in expanded view */
+.expanded-thumb {
+    position: relative;
+    width: 70px;
+    height: 95px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid #555;
+    background-color: #3a3a3a;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.expanded-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.expanded-thumb:hover {
+    border-color: #888;
+    transform: scale(1.05);
+}
+
+.expanded-thumb.active {
+    border-color: #4285f4;
+    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.4);
+}
+
+/* Smooth sliding DURING drag only — applied via JS class on the container */
+#expandedImages.drag-in-progress .expanded-thumb {
+    transition: transform 0.12s ease !important;
+    will-change: transform;
+}
+
+/* Source card is removed from flex flow via display:none (set inline in JS).
+   This class is kept only as a marker for filtering in querySelectorAll. */
+.expanded-thumb.gallery-drag-source {
+    display: none !important;
+}
+
+/* Floating clone that follows the cursor — no transition, must track instantly */
+.gallery-drag-clone {
+    transition: none !important;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid #fff;
+    background-color: #3a3a3a;
+}
+
+/* Delete button in expanded view - INSIDE the card */
+.expanded-thumb .thumb-delete-btn {
+    top: 4px;
+    right: 4px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    padding: 0;
+    padding-bottom: 1px;
+    line-height: 1;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .mini-viewer {
+        top: 10px;
+        right: 10px;
+    }
+
+    .mini-viewer-stack {
+        width: 60px;
+        height: 85px;
+    }
+
+    .stacked-thumb {
+        width: 60px;
+        height: 85px;
+        border-radius: 10px;
+    }
+
+    .stacked-thumb.stack-1 {
+        top: 5px;
+        left: 5px;
+    }
+
+    .stacked-thumb.stack-2 {
+        top: 10px;
+        left: 10px;
+    }
+
+    .mini-viewer-expanded {
+        max-width: 280px;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .expanded-thumb {
+        width: 55px;
+        height: 75px;
+        border-radius: 8px;
+    }
+
+    .thumb-delete-btn {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+    }
+
+    .image-count-badge {
+        min-width: 18px;
+        height: 18px;
+        font-size: 9px;
+    }
 }
