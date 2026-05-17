@@ -1,4 +1,4 @@
-class ImagePixelationTool {
+class Strata {
     constructor() {
         // Initialize upload system FIRST - this is critical and must never fail
         this.initializeUploadSystem();
@@ -2485,5 +2485,5 @@ class ImagePixelationTool {
 
 // Initialize the tool when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new ImagePixelationTool();
+    new Strata();
 });
