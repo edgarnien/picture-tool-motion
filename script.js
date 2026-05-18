@@ -646,19 +646,6 @@ class Strata {
                 }
             });
 
-            // Click on drop zone to upload (desktop and mobile)
-            if (mainContent) {
-                mainContent.addEventListener('click', (e) => {
-                    try {
-                        if (this.images.length === 0 && e.target.closest('#dropZone')) {
-                            fileInput.click();
-                        }
-                    } catch (err) {
-                        console.error('Upload click error:', err);
-                    }
-                });
-            }
-
             // Drag and drop events (now supports multiple files)
             if (dropZone) {
                 dropZone.addEventListener('dragover', (e) => {
