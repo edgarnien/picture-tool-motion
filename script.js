@@ -48,11 +48,10 @@ class Strata {
         };
 
         // Video recording state
-        this.isRecording = false;
-        this.mediaRecorder = null;
-        this.recordedChunks = [];
-        this.videoStream = null;
+        this.isRecording          = false;
         this.isProcessingDownload = false;
+        this.h264Encoder          = null;
+        this.videoFrameCount      = 0;
 
         // Background color state
         this.backgroundColorEnabled = false;
@@ -65,6 +64,28 @@ class Strata {
         this.initializeEventListeners();
         this.initializeGallerySystem();
         this.safeUpdateSliderValues();
+
+        // Override browser form-state restoration — always start with defaults
+        this.applyDefaultsToUI();
+    }
+
+    applyDefaultsToUI() {
+        const d = this.defaultSettings;
+        document.getElementById('sizeSlider').value        = d.pixelSize;
+        document.getElementById('sizeValue').textContent   = d.pixelSize;
+        document.getElementById('thresholdSlider').value   = d.threshold;
+        document.getElementById('thresholdValue').textContent = d.threshold;
+        document.getElementById('stretchSlider').value     = d.stretch;
+        document.getElementById('stretchValue').textContent = d.stretch.toString().padStart(2, '0');
+        document.getElementById('sensitivitySlider').value = d.sensitivity;
+        document.getElementById('sensitivityValue').textContent = d.sensitivity;
+        document.getElementById('opacitySlider').value     = d.opacity;
+        document.getElementById('opacityValue').textContent = d.opacity;
+        document.getElementById('speedSlider').value       = d.speed;
+        document.getElementById('speedValue').textContent  = `${d.speed.toFixed(1)}x`;
+        document.getElementById('motionTypeSelect').value  = d.motionType;
+        document.getElementById('aspectRatioSelect').value = d.aspectRatio;
+        document.getElementById('hexColorInput').value     = d.primaryColor;
     }
 
     // ===========================================
@@ -369,6 +390,14 @@ class Strata {
         document.body.appendChild(clone);
         this._galleryClone = clone;
 
+        // Lock panel width before removing source so the mini-viewer doesn't contract
+        // rightward, and suppress overflow so translated neighbours don't show a scrollbar.
+        const expandedPanel = document.getElementById('miniViewerExpanded');
+        if (expandedPanel) {
+            expandedPanel.style.minWidth = expandedPanel.offsetWidth + 'px';
+            expandedPanel.style.overflow = 'hidden';
+        }
+
         // Remove source from flex flow completely — opacity:0 kept its slot, causing a
         // permanent phantom gap AND allowing transforms to push cards on top of it.
         el.classList.add('gallery-drag-source');
@@ -466,6 +495,13 @@ class Strata {
             t.style.transform = '';
         });
         document.getElementById('expandedImages')?.classList.remove('drag-in-progress');
+
+        // Release the width lock and restore scroll behaviour
+        const expandedPanel = document.getElementById('miniViewerExpanded');
+        if (expandedPanel) {
+            expandedPanel.style.minWidth = '';
+            expandedPanel.style.overflow = '';
+        }
         this._galleryDragActive = false;
         this._galleryDragIndex = undefined;
         this._galleryDropIndex = undefined;
@@ -610,17 +646,15 @@ class Strata {
                 }
             });
 
-            // Mobile upload - click on main content area
+            // Click on drop zone to upload (desktop and mobile)
             if (mainContent) {
                 mainContent.addEventListener('click', (e) => {
                     try {
-                        const isMobile = window.innerWidth <= 768;
-                        // Only trigger if clicking on drop zone area and no images loaded
-                        if (isMobile && this.images.length === 0 && e.target.closest('#dropZone')) {
+                        if (this.images.length === 0 && e.target.closest('#dropZone')) {
                             fileInput.click();
                         }
                     } catch (err) {
-                        console.error('Mobile upload error:', err);
+                        console.error('Upload click error:', err);
                     }
                 });
             }
@@ -935,7 +969,7 @@ class Strata {
             return;
         }
         this.motionAnimationRunning = true;
-        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? 'STOP' : 'STOP ANIMATION';
+        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? '◼ STOP' : '◼ STOP ANIMATION';
         this.prepareMotionBarOrder();
         this.motionAnimationFrame = 0;
         this.animationStartTime = performance.now();
@@ -950,7 +984,7 @@ class Strata {
 
     stopMotionAnimation() {
         this.motionAnimationRunning = false;
-        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? 'START' : 'START ANIMATION';
+        document.getElementById('startStopMotionBtn').textContent = window.innerWidth <= 768 ? '▷ START' : '▷ START ANIMATION';
         if (this.motionAnimationRequestId) {
             cancelAnimationFrame(this.motionAnimationRequestId);
             this.motionAnimationRequestId = null;
@@ -1026,7 +1060,7 @@ class Strata {
                     r = g = b = gray > threshold * 2.55 ? 255 : 0;
                 } else {
                     // In colored mode, check for background removal
-                    if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors)) {
+                    if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors, x, y)) {
                         continue; // Skip background colors - don't add to animation
                     }
 
@@ -1080,8 +1114,8 @@ class Strata {
             case 'motion6':
                 this.runMotion6Animation();
                 break;
-            case 'motion7':
-                this.runMotion7Animation();
+            case 'motion8':
+                this.runMotion8Animation();
                 break;
             default:
                 this.runMotion1Animation();
@@ -1124,34 +1158,56 @@ class Strata {
         const currentCycleNumber = Math.floor(elapsedTime / cycleDuration);
         if (this.checkCycleAdvance(currentCycleNumber)) return;
 
-        // Re-roll origins once per cycle — seeded LCG so positions are stable within
-        // a cycle but change every cycle.
         if (this._impulseCycle !== currentCycleNumber) {
             this._impulseCycle = currentCycleNumber;
             let s = (currentCycleNumber * 1664525 + 1013904223) >>> 0;
             const rng = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
             const w = this.canvas.width, h = this.canvas.height;
-            this._impulseOrigins = [
-                { x: w * (0.15 + rng() * 0.7), y: h * (0.15 + rng() * 0.7), offset: 0 },
-                { x: w * (0.15 + rng() * 0.7), y: h * (0.15 + rng() * 0.7), offset: 0.38 + rng() * 0.18 },
-            ];
+            const count = rng() > 0.45 ? 3 : 2;
+            this._impulseOrigins = [];
+            for (let i = 0; i < count; i++) {
+                this._impulseOrigins.push({
+                    x: w * (0.15 + rng() * 0.7),
+                    y: h * (0.15 + rng() * 0.7),
+                    delay: i === 0 ? 0 : rng() * 0.22,
+                });
+            }
             this._impulseMaxR = Math.sqrt(w * w + h * h);
         }
 
-        const phase = (elapsedTime % cycleDuration) / cycleDuration; // 0 → 1
+        const phase = (elapsedTime % cycleDuration) / cycleDuration;
         const maxR = this._impulseMaxR;
-        const coreW = maxR * 0.13; // solid ring width — deterministic, no per-frame randomness
+        const scatterW = maxR * 0.16;
+        const expandEnd = 0.62; // expansion occupies first 62%, contraction the rest
+
+        const expanding = phase <= expandEnd;
+        const contractT = expanding ? 0 : (phase - expandEnd) / (1 - expandEnd);
+        // Contraction eases in (slow start → fast collapse)
+        const collapseR = expanding ? maxR : maxR * Math.pow(1 - contractT, 1.6);
 
         for (const bar of this.motionBarOrder) {
-            let draw = false;
+            // Stable per-bar random threshold — no per-frame flicker
+            const hx = (bar.x * 73856093) >>> 0;
+            const hy = (bar.y * 19349663) >>> 0;
+            const barT = ((hx ^ hy) * 2654435761 >>> 0) / 0xFFFFFFFF;
+
+            let visible = false;
             for (const o of this._impulseOrigins) {
-                const p = (phase + o.offset) % 1;
-                // Ease-out expansion: ring starts fast and slows toward edges
-                const r    = maxR * (1 - Math.pow(1 - p, 1.6));
                 const dist = Math.sqrt((bar.x - o.x) ** 2 + (bar.y - o.y) ** 2);
-                if (Math.abs(dist - r) <= coreW) { draw = true; break; }
+
+                if (expanding) {
+                    // Each origin has a staggered start; ease-out expansion (fast → slow)
+                    const localT = Math.max(0, Math.min(1, (phase - o.delay) / (expandEnd - o.delay)));
+                    const r = maxR * (1 - Math.pow(1 - localT, 2.4));
+                    // Bar fills in as circle passes — scatter on leading edge
+                    if (barT < (r - dist) / scatterW) { visible = true; break; }
+                } else {
+                    // All origins collapse together outside-in — scatter on trailing edge
+                    if (barT < (collapseR - dist) / scatterW) { visible = true; break; }
+                }
             }
-            if (draw) this.drawBar(bar);
+
+            if (visible) this.drawBar(bar);
         }
 
         this.updateDisplay();
@@ -1170,24 +1226,58 @@ class Strata {
         if (this.lastWaveCycle !== currentCycle) {
             this.lastWaveCycle = currentCycle;
             this.waveDirection = Math.floor(Math.random() * 4);
-            this.sortBarsBy(this.waveDirection);
+            let s = (currentCycle * 1664525 + 1013904223) >>> 0;
+            const rng = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0xFFFFFFFF; };
+            this._waveFreq1  = 1.8 + rng() * 1.4;
+            this._waveFreq2  = 4.0 + rng() * 2.5;
+            this._waveAmp1   = 0.06 + rng() * 0.06;
+            this._waveAmp2   = 0.03 + rng() * 0.03;
+            this._wavePhase  = rng() * Math.PI * 2;
         }
 
         this.clearCanvasBackground();
 
+        const { width, height } = this.canvas;
         const rawProgress = timeInCycle / cycleDuration;
-        const progress = rawProgress < 0.5
-            ? 2 * rawProgress * rawProgress
-            : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
 
-        const totalBars = this.motionBarOrder.length;
+        // Phase 1 (0→0.5): bars emerge; Phase 2 (0.5→1): bars retreat
+        const advancing = rawProgress <= 0.5;
+        const phaseT = advancing ? rawProgress * 2 : (rawProgress - 0.5) * 2;
+        // Ease in-out within each half
+        const wavePos = phaseT < 0.5
+            ? 2 * phaseT * phaseT
+            : 1 - Math.pow(-2 * phaseT + 2, 3) / 2;
 
-        if (progress <= 0.5) {
-            const barsToShow = Math.floor(totalBars * progress * 2);
-            for (let i = 0; i < barsToShow; i++) this.drawBar(this.motionBarOrder[i]);
-        } else {
-            const barsToHide = Math.floor(totalBars * (progress - 0.5) * 2);
-            for (let i = barsToHide; i < totalBars; i++) this.drawBar(this.motionBarOrder[i]);
+        // Wide scatter zone: bars gradually appear/disappear ahead of the main front.
+        // Each bar has a stable random threshold (hashed from its coords) so it flickers
+        // at a consistent position in the wave rather than every frame.
+        const scatterWidth = 0.45;
+
+        for (const bar of this.motionBarOrder) {
+            let along, perp;
+            switch (this.waveDirection) {
+                case 0: along = bar.x / width;       perp = bar.y / height; break;
+                case 1: along = 1 - bar.x / width;   perp = bar.y / height; break;
+                case 2: along = bar.y / height;       perp = bar.x / width;  break;
+                case 3: along = 1 - bar.y / height;  perp = bar.x / width;  break;
+            }
+
+            // Organic sine displacement on the wave front shape
+            const disp = this._waveAmp1 * Math.sin(perp * this._waveFreq1 * Math.PI * 2 + this._wavePhase)
+                       + this._waveAmp2 * Math.sin(perp * this._waveFreq2 * Math.PI * 2 - this._wavePhase * 1.3);
+            const effectiveAlong = along + disp;
+
+            // Stable per-bar random value (0–1) via integer hash of position
+            const hx = (bar.x * 73856093) >>> 0;
+            const hy = (bar.y * 19349663) >>> 0;
+            const barT = ((hx ^ hy) * 2654435761 >>> 0) / 0xFFFFFFFF;
+
+            // Front position: advances 0→1, then retreats 1→0 (no jump at midpoint)
+            const frontPos = advancing ? wavePos : 1 - wavePos;
+            const threshold = (frontPos - effectiveAlong) / scatterWidth;
+
+            // Bar is visible when the front has passed its position
+            if (barT < threshold) this.drawBar(bar);
         }
 
         this.updateDisplay();
@@ -1202,11 +1292,6 @@ class Strata {
         const timeInCycle = elapsedTime % cycleDuration;
 
         if (this.checkCycleAdvance(currentCycle)) return;
-
-        if (this.fadeDirection === undefined) {
-            this.fadeDirection = Math.floor(Math.random() * 4);
-            this.sortBarsBy(this.fadeDirection);
-        }
 
         this.pixelCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -1384,6 +1469,53 @@ class Strata {
         }
     }
 
+    runMotion8Animation() {
+        const elapsedTime = performance.now() - this.animationStartTime;
+        const cycleDuration = this.baseCycleDuration / this.animationSpeed;
+        const currentCycle = Math.floor(elapsedTime / cycleDuration);
+        if (this.checkCycleAdvance(currentCycle)) return;
+
+        this.clearCanvasBackground();
+
+        const rawProgress = (elapsedTime % cycleDuration) / cycleDuration;
+        const totalBars = this.motionBarOrder.length;
+        const waveWidth = 0.15;
+
+        // Phase 1 (0→0.5): pixelated → clear bar by bar
+        // Phase 2 (0.5→1): clear → pixelated bar by bar
+        const revealing = rawProgress <= 0.5;
+        const phaseProgress = revealing ? rawProgress * 2 : (rawProgress - 0.5) * 2;
+
+        for (let i = 0; i < totalBars; i++) {
+            const bar = this.motionBarOrder[i];
+            const barPos = i / totalBars;
+            const t = (phaseProgress - barPos) / waveWidth;
+            const clearAlpha = revealing
+                ? Math.max(0, Math.min(1, t))
+                : Math.max(0, Math.min(1, 1 - t));
+
+            // Always draw pixelated color as the "from" state regardless of mask mode
+            this.pixelCtx.fillStyle = `rgb(${bar.r},${bar.g},${bar.b})`;
+            this.pixelCtx.fillRect(bar.x, bar.y, bar.width, bar.height);
+
+            // Overlay clear image clipped to bar at clearAlpha
+            if (clearAlpha > 0 && this.originalImage) {
+                this.pixelCtx.save();
+                this.pixelCtx.beginPath();
+                this.pixelCtx.rect(bar.x, bar.y, bar.width, bar.height);
+                this.pixelCtx.clip();
+                this.pixelCtx.globalAlpha = clearAlpha;
+                this.drawOriginalImageToContext(this.pixelCtx);
+                this.pixelCtx.globalAlpha = 1.0;
+                this.pixelCtx.restore();
+            }
+        }
+
+        this.updateDisplay();
+        this.motionAnimationFrame++;
+        this.scheduleNextFrame();
+    }
+
     updateDisplay() {
         this.pixelCanvas.style.display = 'block';
         this.canvas.style.display = 'block';
@@ -1391,23 +1523,27 @@ class Strata {
         // Update video canvas if recording
         if (this.isRecording && this.videoCanvas) {
             this.videoCtx.clearRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
-            
-            // Fill background with custom color if enabled
+
             if (this.backgroundColorEnabled) {
                 this.videoCtx.fillStyle = this.backgroundColor;
                 this.videoCtx.fillRect(0, 0, this.videoCanvas.width, this.videoCanvas.height);
             }
-            
-            // Draw background image if enabled
+
             if (this.backgroundImageEnabled && this.originalImage) {
                 const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
                 this.videoCtx.globalAlpha = opacity;
                 this.videoCtx.drawImage(this.originalImage, 0, 0, this.videoCanvas.width, this.videoCanvas.height);
-                this.videoCtx.globalAlpha = 1.0; // Reset opacity for bars
+                this.videoCtx.globalAlpha = 1.0;
             }
-            
-            // Draw the pixelated content at original size
+
             this.videoCtx.drawImage(this.pixelCanvas, 0, 0);
+
+            // Capture frame for H.264 MP4 encoder
+            if (this.h264Encoder) {
+                const imgData = this.videoCtx.getImageData(0, 0, this.videoCanvas.width, this.videoCanvas.height);
+                this.h264Encoder.addFrameRgba(imgData.data);
+                this.videoFrameCount++;
+            }
         }
     }
 
@@ -1418,10 +1554,9 @@ class Strata {
     clearCanvasBackground() {
         const { width, height } = this.canvas;
         this.pixelCtx.clearRect(0, 0, width, height);
-        if (this.backgroundColorEnabled) {
-            this.pixelCtx.fillStyle = this.backgroundColor;
-            this.pixelCtx.fillRect(0, 0, width, height);
-        }
+        // Always fill a solid base so the original image on this.canvas never bleeds through
+        this.pixelCtx.fillStyle = this.backgroundColorEnabled ? this.backgroundColor : '#000000';
+        this.pixelCtx.fillRect(0, 0, width, height);
         if (this.backgroundImageEnabled && this.originalImage) {
             const opacity = parseInt(document.getElementById('opacitySlider').value) / 100;
             this.pixelCtx.globalAlpha = opacity;
@@ -1475,188 +1610,114 @@ class Strata {
         }
     }
 
-    detectVideoFormat() {
-        const candidates = [
-            { mimeType: 'video/webm;codecs=vp9', bps: 8000000 },
-            { mimeType: 'video/webm;codecs=vp8', bps: 6000000 },
-            { mimeType: 'video/webm',             bps: 5000000 },
-            { mimeType: 'video/mp4;codecs=h264',  bps: 10000000 },
-            { mimeType: 'video/mp4',              bps: 10000000 },
-        ];
-        for (const c of candidates) {
-            if (MediaRecorder.isTypeSupported(c.mimeType)) {
-                return { mimeType: c.mimeType, videoBitsPerSecond: c.bps };
-            }
-        }
-        return null;
+    async waitForHME() {
+        if (window._hmeFailed) return false;
+        if (typeof HME !== 'undefined') return true;
+        return new Promise((resolve) => {
+            const interval = setInterval(() => {
+                if (window._hmeFailed) { clearInterval(interval); resolve(false); }
+                if (window._hmeLoaded || typeof HME !== 'undefined') {
+                    clearInterval(interval);
+                    resolve(typeof HME !== 'undefined');
+                }
+            }, 150);
+            setTimeout(() => { clearInterval(interval); resolve(false); }, 15000);
+        });
     }
 
     async startVideoRecording() {
         try {
             if (this.isRecording) return;
 
-            if (typeof MediaRecorder === 'undefined') {
-                alert('Video recording is not supported in this browser.\nPlease use Chrome, Firefox, or Safari 14.1+.');
+            const btn = document.getElementById('videoDownloadBtn');
+            btn.disabled = true;
+            btn.textContent = 'LOADING…';
+            const ready = await this.waitForHME();
+            btn.disabled = false;
+            btn.textContent = 'VIDEO ↓';
+
+            if (!ready) {
+                alert('MP4 encoder failed to load. Please check your internet connection and refresh the page.');
                 return;
             }
 
-            const finalWidth = this.pixelCanvas.width;
-            const finalHeight = this.pixelCanvas.height;
+            const finalWidth  = this.pixelCanvas.width  % 2 === 0 ? this.pixelCanvas.width  : this.pixelCanvas.width  - 1;
+            const finalHeight = this.pixelCanvas.height % 2 === 0 ? this.pixelCanvas.height : this.pixelCanvas.height - 1;
 
             this.videoCanvas = document.createElement('canvas');
-            this.videoCanvas.width = finalWidth;
+            this.videoCanvas.width  = finalWidth;
             this.videoCanvas.height = finalHeight;
             this.videoCtx = this.videoCanvas.getContext('2d');
 
-            if (typeof this.videoCanvas.captureStream !== 'function') {
-                alert('Canvas video capture is not supported in this browser.\nPlease use Chrome, Firefox, or Safari 14.1+.');
-                return;
-            }
+            this.h264Encoder = await HME.createH264MP4Encoder();
+            this.h264Encoder.width                 = finalWidth;
+            this.h264Encoder.height                = finalHeight;
+            this.h264Encoder.frameRate             = 30;
+            this.h264Encoder.quantizationParameter = 15;
+            this.h264Encoder.initialize();
 
-            this.videoStream = this.videoCanvas.captureStream(30);
-
-            const options = this.detectVideoFormat();
-            if (!options) {
-                alert('No supported video format found in this browser.\nPlease try Chrome or Firefox.');
-                return;
-            }
-
-            this.mediaRecorder = new MediaRecorder(this.videoStream, options);
-            this.recordedChunks = [];
-
-            this.mediaRecorder.ondataavailable = (event) => {
-                if (event.data && event.data.size > 0) {
-                    this.recordedChunks.push(event.data);
-                    console.log('Data chunk added, size:', event.data.size);
-                }
-            };
-
-            this.mediaRecorder.onstop = () => {
-                // Just clean up, don't auto-download
-                console.log('Recording stopped, total chunks:', this.recordedChunks.length);
-            };
-
-            this.mediaRecorder.onerror = (event) => {
-                console.error('MediaRecorder error:', event.error);
-                alert('Recording error: ' + event.error.message);
-                this.resetVideoState();
-            };
-
-            // Start recording with smaller time slice for more frequent data collection
-            this.mediaRecorder.start(200); // Collect data every 200ms
-            this.isRecording = true;
+            this.videoFrameCount      = 0;
+            this.isRecording          = true;
             this.isProcessingDownload = false;
-            
-            // Update button text
-            document.getElementById('videoDownloadBtn').textContent = 'Stop Recording ⏹';
-            
-            // Start the animation for recording
+
+            document.getElementById('videoDownloadBtn').classList.add('recording');
             this.startMotionAnimation();
-            
-            console.log('Recording started successfully');
-            
+
         } catch (error) {
             console.error('Error starting video recording:', error);
-            alert('Failed to start video recording. Error: ' + error.message + '\n\nYour browser might not support video recording.');
+            alert('Failed to start video recording: ' + error.message);
             this.resetVideoState();
         }
     }
 
     stopVideoRecording() {
-        if (this.mediaRecorder && this.isRecording) {
-            this.isRecording = false;
-            this.mediaRecorder.stop();
-            
-            // Stop video stream
-            if (this.videoStream) {
-                this.videoStream.getTracks().forEach(track => track.stop());
-                this.videoStream = null;
-            }
-            
-            // Update button text
-            document.getElementById('videoDownloadBtn').textContent = 'Download Video ↓';
-            
-            // Stop animation if running
-            if (this.motionAnimationRunning) {
-                this.stopMotionAnimation();
-            }
-            
-            // Manually trigger download after a short delay to ensure recording is fully stopped
-            setTimeout(() => {
-                if (this.recordedChunks.length > 0 && !this.isProcessingDownload) {
-                    this.downloadRecordedVideo();
-                }
-            }, 200);
-        }
-    }
+        if (!this.isRecording) return;
 
-    downloadRecordedVideo() {
-        if (this.isProcessingDownload) {
-            console.log('Download already in progress, skipping...');
-            return; // Prevent multiple downloads
-        }
+        this.isRecording = false;
+        document.getElementById('videoDownloadBtn').classList.remove('recording');
+        if (this.motionAnimationRunning) this.stopMotionAnimation();
 
-        if (this.recordedChunks.length === 0) {
-            alert('No video data recorded');
-            this.resetVideoState();
-            return;
-        }
-
-        this.isProcessingDownload = true;
-        console.log('Starting video download with', this.recordedChunks.length, 'chunks...');
+        if (!this.h264Encoder) return;
 
         try {
-            const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
-            if (totalSize === 0) throw new Error('Video data is empty');
+            if (this.videoFrameCount === 0) throw new Error('No frames captured — try recording for at least 1 second.');
 
-            const mimeType = (this.mediaRecorder && this.mediaRecorder.mimeType) || 'video/webm';
-            const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-            const blob = new Blob(this.recordedChunks, { type: mimeType });
-            const filename = `pixelation-animation-${Date.now()}.${extension}`;
-
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
+            this.h264Encoder.finalize();
+            const uint8 = this.h264Encoder.FS.readFile(this.h264Encoder.outputFilename);
+            const blob     = new Blob([uint8], { type: 'video/mp4' });
+            const filename = `strata-animation-${Date.now()}.mp4`;
+            const url      = URL.createObjectURL(blob);
+            const a        = document.createElement('a');
+            a.href = url; a.download = filename; a.style.display = 'none';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-            this.resetVideoState();
             alert(`Video saved!\n\nFile: ${filename}\nSize: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
-
         } catch (error) {
-            alert('Failed to download video: ' + error.message);
-            this.resetVideoState();
+            console.error('Error saving MP4:', error);
+            alert('Failed to save video: ' + error.message);
         }
+
+        this.resetVideoState();
     }
 
     resetVideoState() {
-        console.log('Resetting video state...');
-        this.recordedChunks = [];
-        this.isRecording = false;
+        this.isRecording          = false;
         this.isProcessingDownload = false;
-        
-        if (this.mediaRecorder) {
-            this.mediaRecorder = null;
+        this.videoFrameCount      = 0;
+
+        if (this.h264Encoder) {
+            try { this.h264Encoder.delete(); } catch (e) {}
+            this.h264Encoder = null;
         }
-        
-        if (this.videoStream) {
-            this.videoStream.getTracks().forEach(track => track.stop());
-            this.videoStream = null;
-        }
-        
-        // Clean up video canvas
+
         if (this.videoCanvas) {
             this.videoCanvas = null;
-            this.videoCtx = null;
+            this.videoCtx    = null;
         }
-        
-        // Reset button text
-        document.getElementById('videoDownloadBtn').textContent = 'Download Video ↓';
-        console.log('Video state reset complete');
+
+        document.getElementById('videoDownloadBtn').classList.remove('recording');
     }
 
     isValidImageFile(file) {
@@ -1747,7 +1808,7 @@ class Strata {
         
         // Update background color UI
         const backgroundColorBtn = document.getElementById('backgroundColorBtn');
-        backgroundColorBtn.textContent = 'BACK COLOR: OFF';
+        backgroundColorBtn.textContent = 'COLOR: OFF';
         backgroundColorBtn.classList.remove('active');
         document.getElementById('colorCard').style.display = 'none';
         
@@ -1935,7 +1996,7 @@ class Strata {
 
     toggleBackgroundColor() {
         this.backgroundColorEnabled = !this.backgroundColorEnabled;
-        this.updateToggleBtn(this.backgroundColorEnabled, 'backgroundColorBtn', 'BACK COLOR', 'colorCard');
+        this.updateToggleBtn(this.backgroundColorEnabled, 'backgroundColorBtn', 'COLOR', 'colorCard');
         if (this.originalImage) this.processImage();
     }
 
@@ -2314,16 +2375,32 @@ class Strata {
     }
 
     // Helper function to determine if a color should be considered background
-    isBackgroundColor(r, g, b, sensitivity, dominantColors) {
-        const colorThreshold = (100 - sensitivity) * 2.55; // Convert 0-100 to 0-255 range
-        
-        // Check if this color is similar to any dominant color
-        for (let domColor of dominantColors) {
-            if (this.colorDistance(r, g, b, domColor.r, domColor.g, domColor.b) < colorThreshold) {
-                return true;
-            }
+    isBackgroundColor(r, g, b, sensitivity, dominantColors, barX = 0, barY = 0) {
+        // Find closest dominant (background) colour
+        let minDist = Infinity;
+        for (const domColor of dominantColors) {
+            const d = this.colorDistance(r, g, b, domColor.r, domColor.g, domColor.b);
+            if (d < minDist) minDist = d;
         }
-        return false;
+
+        // Hard cap: colours too far from the detected background are never candidates
+        const maxDist = 200;
+        if (minDist >= maxDist) return false;
+
+        // How background-like is this bar? 1 = exact match, 0 = at the edge of maxDist
+        const similarity = 1 - minDist / maxDist;
+
+        // Stable per-bar deterministic value — same bar always removed/kept at the
+        // same sensitivity, no per-frame flicker
+        const hx = ((barX | 0) * 73856093) >>> 0;
+        const hy = ((barY | 0) * 19349663) >>> 0;
+        const barT = ((hx ^ hy) * 2654435761 >>> 0) / 0xFFFFFFFF;
+
+        // sensitivity controls what fraction of background bars are removed:
+        //   sensitivity=100 → all background bars removed
+        //   sensitivity=50  → ~50% of exact-match bars removed (fewer for near-matches)
+        //   sensitivity=0   → nothing removed
+        return (sensitivity / 100) * similarity > barT;
     }
 
     pixelateImage(pixelSize, threshold, stretchFactor) {
@@ -2388,7 +2465,7 @@ class Strata {
                     r = g = b = gray > threshold * 2.55 ? 255 : 0;
                 } else {
                     // In colored mode, check for background removal
-                    if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors)) {
+                    if (this.backgroundRemovalEnabled && this.isBackgroundColor(r, g, b, sensitivity, dominantColors, x, y)) {
                         continue; // Skip background colors
                     }
 

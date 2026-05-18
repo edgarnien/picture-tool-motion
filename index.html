@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Strata</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="favicon.ico">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,6 +17,7 @@
             <div class="mobile-section">
                 <div class="mobile-card upload-section">
                     <div class="mobile-card-label">Image</div>
+                    <div class="strata-tool-label">Strata Tool</div>
                     <button id="uploadBtn" class="upload-btn">UPLOAD IMAGE</button>
                     <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp" hidden>
                 </div>
@@ -22,8 +25,6 @@
 
             <!-- Mode Selection -->
             <div class="section-label">MODE</div>
-            <!-- Reset Settings Button -->
-            <button id="resetSettingsBtn" class="reset-btn">RESET SETTINGS</button>
 
             <!-- Adjustments -->
             <div class="section-label">ADJUSTMENTS</div>
@@ -97,8 +98,8 @@
             <div class="section-label">COLOR & EFFECTS</div>
             <div class="mobile-section">
                 <div class="mobile-card">
-                    <div class="mobile-card-label">Back Color</div>
-                    <button id="backgroundColorBtn" class="background-btn">BACK COLOR: OFF</button>
+                    <div class="mobile-card-label">Color</div>
+                    <button id="backgroundColorBtn" class="background-btn">COLOR: OFF</button>
                 </div>
                 <div class="mobile-card" id="colorCard" style="display: none;">
                     <div class="mobile-card-label">Hex Color</div>
@@ -120,16 +121,16 @@
                 <div class="settings-subsection">
                     <div class="section-label">ANIMATION:</div>
                     <div class="mobile-card">
-                        <button id="startStopMotionBtn" class="background-btn">START/STOP</button>
+                        <button id="startStopMotionBtn" class="background-btn">▷ START/STOP</button>
                     </div>
                     <div class="mobile-card">
                         <select id="motionTypeSelect" class="compact-select">
-                            <option value="motion1">BUILD UP</option>
-                            <option value="motion3">IMPULSE</option>
-                            <option value="motion4">WAVE</option>
-                            <option value="motion5">FADE</option>
-                            <option value="motion6">GLITCH</option>
-                            <option value="motion7">RANDOM</option>
+                            <option value="motion1">↑ BUILD UP</option>
+                            <option value="motion3">◎ IMPULSE</option>
+                            <option value="motion4">∿ WAVE</option>
+                            <option value="motion5">◑ FADE</option>
+                            <option value="motion6">▦ GLITCH</option>
+                            <option value="motion8">◌ REVEAL</option>
                         </select>
                     </div>
                     <div class="mobile-card">
@@ -148,10 +149,10 @@
                     <div class="section-label">ASPECT:</div>
                     <div class="mobile-card">
                         <select id="aspectRatioSelect" class="compact-select">
-                            <option value="original">ORIGINAL</option>
-                            <option value="9:16">9:16 (1080x1920)</option>
-                            <option value="4:5">4:5 (1080x1350)</option>
-                            <option value="16:9">16:9 (1920x1080)</option>
+                            <option value="original">□ FORMAT</option>
+                            <option value="9:16">▯ 9:16 (1080x1920)</option>
+                            <option value="4:5">▯ 4:5 (1080x1350)</option>
+                            <option value="16:9">▭ 16:9 (1920x1080)</option>
                         </select>
                     </div>
                 </div>
@@ -160,11 +161,14 @@
                 <div class="settings-subsection">
                     <div class="section-label">DOWNLOAD:</div>
                     <div class="download-buttons-grid">
-                        <button id="videoDownloadBtn" class="compact-btn">VIDEO</button>
-                        <button id="pngDownloadBtn" class="compact-btn">IMAGE</button>
+                        <button id="videoDownloadBtn" class="compact-btn">VIDEO ↓</button>
+                        <button id="pngDownloadBtn" class="compact-btn">IMAGE ↓</button>
                     </div>
                 </div>
             </div>
+
+            <!-- Reset Settings Button -->
+            <button id="resetSettingsBtn" class="reset-btn">RESET SETTINGS</button>
 
             <!-- Color Wheel Popup -->
             <div id="colorWheelPopup" class="color-wheel-popup" style="display: none;">
@@ -188,7 +192,7 @@
         <div class="main-content">
             <div id="dropZone" class="drop-zone">
                 <div class="drop-content">
-                    <h1>Strata</h1>
+                    <h1>Upload Content</h1>
                     <canvas id="canvas" width="800" height="600" style="display: none;"></canvas>
                     <canvas id="pixelCanvas" width="800" height="600" style="display: none;"></canvas>
                 </div>
@@ -211,6 +215,7 @@
         </div>
     </div>
 
+    <script src="lib/h264-mp4-encoder.web.js" onload="window._hmeLoaded=true" onerror="window._hmeFailed=true"></script>
     <script src="script.js"></script>
 </body>
 </html>
